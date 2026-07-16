@@ -228,7 +228,23 @@ function createInitialParticipantSessionId() {
 function isResearcherPath() {
   if (typeof window === "undefined") return false;
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  return path === RESEARCHER_PATH;
+  return path === RESEARCHER_PATH || path.endsWith(RESEARCHER_PATH);
+}
+
+function getParticipantPath() {
+  if (typeof window === "undefined") return "/";
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (path === RESEARCHER_PATH) return "/";
+  if (path.endsWith(RESEARCHER_PATH)) {
+    return `${path.slice(0, -RESEARCHER_PATH.length) || "/"}/`;
+  }
+  return path === "/" ? "/" : `${path}/`;
+}
+
+function getResearcherPath() {
+  if (typeof window === "undefined") return RESEARCHER_PATH;
+  const participantPath = getParticipantPath().replace(/\/+$/, "") || "/";
+  return participantPath === "/" ? RESEARCHER_PATH : `${participantPath}${RESEARCHER_PATH}`;
 }
 
 function downloadJsonFile(fileName, payload) {
@@ -4412,7 +4428,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => {
-            window.history.pushState({}, "", "/");
+            window.history.pushState({}, "", getParticipantPath());
             window.location.reload();
           }}
         >
@@ -4470,7 +4486,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
-                window.history.pushState({}, "", RESEARCHER_PATH);
+                window.history.pushState({}, "", getResearcherPath());
                 window.location.reload();
               }}
             >
