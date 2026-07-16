@@ -3050,6 +3050,10 @@ export default function App() {
     }
     const importedTexts = normalized.values.map((value) => value.text);
     const importedIcons = normalized.values.map((value) => value.icon || getValueIcon(value.text));
+    const importedBoardItems = [
+      ...createVersionBBoardItemsFromValues(importedTexts),
+      ...createVersionBBoardImageItemsFromQuestionPhotos(versionBPhotos)
+    ];
     setParticipantSessionId(targetSessionId);
     setResearcherSessionLookup(targetSessionId);
     setAiSuggestedValues(normalized.values);
@@ -3061,7 +3065,7 @@ export default function App() {
     } else {
       setToolBValues(importedTexts);
       setToolBValueIcons(importedIcons);
-      setVersionBBoardItems(createVersionBBoardItemsFromValues(importedTexts));
+      setVersionBBoardItems(importedBoardItems);
     }
     setCompletedPhaseOneTools((current) => (current.includes(targetTool) ? current : [...current, targetTool]));
     const baseSession = readParticipantSessionDraft(targetSessionId) || buildParticipantSessionExport();
@@ -3069,7 +3073,6 @@ export default function App() {
       ...(baseSession.aiGeneratedValuesByTool || {}),
       [targetTool]: normalized.values
     };
-    const importedBoardItems = createVersionBBoardItemsFromValues(importedTexts);
     appendSessionEvent({ type: "ai_values_imported", tool: targetTool, count: normalized.values.length });
     const importedSession = {
       ...baseSession,
@@ -4878,7 +4881,9 @@ export default function App() {
                 <div className="section-title">
                   1. Based on the story you shared today, these are the values we identified.
                 </div>
-                {versionBBoardItems.some((item) => item.type === "text" && item.text?.trim()) ? (
+                {versionBBoardItems.some(
+                  (item) => (item.type === "text" && item.text?.trim()) || (item.type === "image" && item.photo?.url)
+                ) ? (
                   <>
                     <div className="section-sub">
                       Drag images and value text anywhere on the canvas. Tap the image library below to add photos.
@@ -4949,6 +4954,7 @@ export default function App() {
                       onAdd={addToVersionBValuesLibrary}
                       onSelect={selectVersionBValuesLibraryImage}
                       onGenerateAi={generateVersionBValuesAiImage}
+                      showAiGenerate={false}
                     />
                   </>
                 ) : (
