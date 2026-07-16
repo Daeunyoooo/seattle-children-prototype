@@ -2644,93 +2644,6 @@ export default function App() {
     return session;
   }
 
-  async function savePhase1CheckpointAsResearcher() {
-    const cleanSessionId = cleanValueText(researcherSessionLookup);
-    if (!cleanSessionId) {
-      setResearcherStatus("Enter a participant ID first.");
-      return;
-    }
-    let session;
-    try {
-      session = await getSessionForResearcherSave(cleanSessionId);
-    } catch (error) {
-      setResearcherStatus(error.message || "Load the participant draft first.");
-      return;
-    }
-    const phase1Complete =
-      session.phaseOne?.completedTools?.length === 2 ||
-      session.phaseOne?.currentScreen === "summary" ||
-      session.phase >= 2;
-    if (!phase1Complete) {
-      setResearcherStatus(`${cleanSessionId} has not finished Phase 1 yet.`);
-      return;
-    }
-    const checkpointSession = {
-      ...session,
-      sessionStatus: "phase1_saved",
-      checkpoints: {
-        ...(session.checkpoints || {}),
-        phase1: { savedAt: new Date().toISOString() }
-      },
-      updatedAt: new Date().toISOString()
-    };
-    try {
-      const leanSession = await saveParticipantSessionRemote(checkpointSession);
-      const localDraft = readParticipantSessionDraft(cleanSessionId) || session;
-      writeParticipantSessionDraft({
-        ...localDraft,
-        sessionStatus: "phase1_saved",
-        checkpoints: leanSession.checkpoints || checkpointSession.checkpoints
-      });
-      downloadJsonFile(`${cleanSessionId}-phase1-log.json`, leanSession);
-      setResearcherStatus(`Downloaded Phase 1 log for ${cleanSessionId}. Data was saved only in this browser.`);
-    } catch (error) {
-      setResearcherStatus(error.message || "Could not save Phase 1 log.");
-    }
-  }
-
-  async function savePhase2CheckpointAsResearcher() {
-    const cleanSessionId = cleanValueText(researcherSessionLookup);
-    if (!cleanSessionId) {
-      setResearcherStatus("Enter a participant ID first.");
-      return;
-    }
-    let session;
-    try {
-      session = await getSessionForResearcherSave(cleanSessionId);
-    } catch (error) {
-      setResearcherStatus(error.message || "Load the participant draft first.");
-      return;
-    }
-    const phase2Ready = session.participantFinished || session.phase === 2;
-    if (!phase2Ready) {
-      setResearcherStatus(`${cleanSessionId} has not finished Phase 2 yet. Ask the participant to tap Done.`);
-      return;
-    }
-    const checkpointSession = {
-      ...session,
-      sessionStatus: "phase2_saved",
-      checkpoints: {
-        ...(session.checkpoints || {}),
-        phase2: { savedAt: new Date().toISOString() }
-      },
-      updatedAt: new Date().toISOString()
-    };
-    try {
-      const leanSession = await saveParticipantSessionRemote(checkpointSession);
-      const localDraft = readParticipantSessionDraft(cleanSessionId) || session;
-      writeParticipantSessionDraft({
-        ...localDraft,
-        sessionStatus: "phase2_saved",
-        checkpoints: leanSession.checkpoints || checkpointSession.checkpoints
-      });
-      downloadJsonFile(`${cleanSessionId}-phase2-log.json`, leanSession);
-      setResearcherStatus(`Downloaded Phase 2 log for ${cleanSessionId}. Tool C PNG data is embedded in the JSON.`);
-    } catch (error) {
-      setResearcherStatus(error.message || "Could not save Phase 2 log.");
-    }
-  }
-
   async function downloadPhase1LogData() {
     const cleanSessionId = cleanValueText(researcherSessionLookup);
     if (!cleanSessionId) {
@@ -2739,8 +2652,28 @@ export default function App() {
     }
     try {
       const session = await getSessionForResearcherSave(cleanSessionId);
-      downloadJsonFile(`${cleanSessionId}-phase1-log.json`, session);
-      setResearcherStatus(`Downloaded Phase 1 log for ${cleanSessionId}.`);
+      const phase1Complete =
+        session.phaseOne?.completedTools?.length === 2 ||
+        session.phaseOne?.currentScreen === "summary" ||
+        session.phase >= 2;
+      if (!phase1Complete) {
+        setResearcherStatus(`${cleanSessionId} has not finished Phase 1 yet.`);
+        return;
+      }
+      const downloadedAt = new Date().toISOString();
+      const downloadSession = {
+        ...session,
+        sessionStatus: "phase1_saved",
+        checkpoints: {
+          ...(session.checkpoints || {}),
+          phase1: { savedAt: downloadedAt }
+        },
+        updatedAt: downloadedAt
+      };
+      writeParticipantSessionDraft(downloadSession);
+      setResearcherDraftTick((current) => current + 1);
+      downloadJsonFile(`${cleanSessionId}-phase1-log.json`, downloadSession);
+      setResearcherStatus(`Downloaded Phase 1 log for ${cleanSessionId} to this computer.`);
     } catch (error) {
       setResearcherStatus(error.message || "Could not download Phase 1 log.");
     }
@@ -2754,8 +2687,25 @@ export default function App() {
     }
     try {
       const session = await getSessionForResearcherSave(cleanSessionId);
-      downloadJsonFile(`${cleanSessionId}-phase2-log.json`, session);
-      setResearcherStatus(`Downloaded Phase 2 log for ${cleanSessionId}. Tool C PNG data is embedded in the JSON.`);
+      const phase2Ready = session.participantFinished || session.phase === 2;
+      if (!phase2Ready) {
+        setResearcherStatus(`${cleanSessionId} has not finished Phase 2 yet. Ask the participant to tap Done.`);
+        return;
+      }
+      const downloadedAt = new Date().toISOString();
+      const downloadSession = {
+        ...session,
+        sessionStatus: "phase2_saved",
+        checkpoints: {
+          ...(session.checkpoints || {}),
+          phase2: { savedAt: downloadedAt }
+        },
+        updatedAt: downloadedAt
+      };
+      writeParticipantSessionDraft(downloadSession);
+      setResearcherDraftTick((current) => current + 1);
+      downloadJsonFile(`${cleanSessionId}-phase2-log.json`, downloadSession);
+      setResearcherStatus(`Downloaded Phase 2 log for ${cleanSessionId} to this computer.`);
     } catch (error) {
       setResearcherStatus(error.message || "Could not download Phase 2 log.");
     }
@@ -4225,8 +4175,8 @@ export default function App() {
         <section className="researcher-card researcher-workflow-card">
           <h2>Session log data</h2>
           <p className="researcher-subtitle">
-            Session logs are downloaded directly to the researcher&apos;s computer. Tool C PNG data is embedded in the
-            downloaded JSON, not stored on the publishing platform.
+            Download participant log JSON directly to this computer. Nothing is uploaded to GitHub Pages. Tool C PNG
+            data is embedded in the Phase 2 JSON.
           </p>
 
           {!loadedDraft ? (
@@ -4238,9 +4188,9 @@ export default function App() {
                   <div className="log-data-title">Phase 1 log data</div>
                   <p className="log-data-desc">Questions, values, goals, and AI updates through Phase 1.</p>
                   {phase1SavedAt ? (
-                    <span className="log-data-saved">Saved {new Date(phase1SavedAt).toLocaleString()}</span>
+                    <span className="log-data-saved">Downloaded {new Date(phase1SavedAt).toLocaleString()}</span>
                   ) : (
-                    <span className="log-data-saved log-data-saved--pending">Not saved yet</span>
+                    <span className="log-data-saved log-data-saved--pending">Not downloaded yet</span>
                   )}
                 </div>
                 <div className="log-data-actions">
@@ -4248,12 +4198,9 @@ export default function App() {
                     className="primary"
                     type="button"
                     disabled={!phase1Complete}
-                    onClick={() => savePhase1CheckpointAsResearcher()}
+                    onClick={() => downloadPhase1LogData()}
                   >
-                    Save &amp; download
-                  </button>
-                  <button type="button" disabled={!phase1Complete} onClick={() => downloadPhase1LogData()}>
-                    Download only
+                    Download to computer
                   </button>
                 </div>
               </div>
@@ -4263,9 +4210,9 @@ export default function App() {
                   <div className="log-data-title">Phase 2 log data</div>
                   <p className="log-data-desc">Full session JSON with embedded Tool C PNG data.</p>
                   {phase2SavedAt ? (
-                    <span className="log-data-saved">Saved {new Date(phase2SavedAt).toLocaleString()}</span>
+                    <span className="log-data-saved">Downloaded {new Date(phase2SavedAt).toLocaleString()}</span>
                   ) : (
-                    <span className="log-data-saved log-data-saved--pending">Not saved yet</span>
+                    <span className="log-data-saved log-data-saved--pending">Not downloaded yet</span>
                   )}
                 </div>
                 <div className="log-data-actions">
@@ -4273,12 +4220,9 @@ export default function App() {
                     className="primary"
                     type="button"
                     disabled={!phase2Ready}
-                    onClick={() => savePhase2CheckpointAsResearcher()}
+                    onClick={() => downloadPhase2LogData()}
                   >
-                    Save &amp; download
-                  </button>
-                  <button type="button" disabled={!phase2Ready} onClick={() => downloadPhase2LogData()}>
-                    Download only
+                    Download to computer
                   </button>
                 </div>
               </div>
