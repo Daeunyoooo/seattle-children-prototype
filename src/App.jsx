@@ -110,10 +110,36 @@ function createVersionBBoardImageItemsFromQuestionPhotos(questionPhotos) {
         type: "image",
         x: position.x,
         y: position.y,
-        photo: { name: photo.name, url: photo.url, isUpload: photo.isUpload }
+        photo: {
+          name: photo.name,
+          url: photo.url,
+          dataUrl: photo.dataUrl,
+          isUpload: photo.isUpload
+        }
       };
     })
     .filter(Boolean);
+}
+
+function ensureQuestionPhotosOnVersionBBoard(boardItems, questionPhotos) {
+  const current = Array.isArray(boardItems) ? boardItems : [];
+  const existingKeys = new Set(
+    current
+      .filter((item) => item?.type === "image")
+      .flatMap((item) => [item.photo?.url, item.photo?.dataUrl, item.photo?.name].filter(Boolean))
+  );
+  const missingPhotos = (questionPhotos || []).filter((photo) => {
+    if (!photo?.url && !photo?.dataUrl) return false;
+    return ![photo.url, photo.dataUrl, photo.name].filter(Boolean).some((key) => existingKeys.has(key));
+  });
+  if (missingPhotos.length === 0) return current;
+  const imageCount = current.filter((item) => item?.type === "image").length;
+  const additions = createVersionBBoardImageItemsFromQuestionPhotos(missingPhotos).map((item, index) => ({
+    ...item,
+    x: VERSION_B_BOARD_QUESTION_PHOTO_POSITIONS[imageCount + index]?.x ?? item.x,
+    y: VERSION_B_BOARD_QUESTION_PHOTO_POSITIONS[imageCount + index]?.y ?? item.y
+  }));
+  return [...current, ...additions];
 }
 
 function getNextVersionBBoardImagePosition(itemCount) {
@@ -998,89 +1024,7 @@ function releaseUploadedPhoto(photo) {
   if (photo?.isUpload && photo?.url) URL.revokeObjectURL(photo.url);
 }
 
-function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight) {
-  const words = text.split(/\s+/);
-  let line = "";
-  const lines = [];
-
-  words.forEach((word) => {
-    const testLine = line ? `${line} ${word}` : word;
-    if (ctx.measureText(testLine).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = testLine;
-    }
-  });
-  if (line) lines.push(line);
-
-  const startY = y - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((lineText, index) => {
-    ctx.fillText(lineText, x, startY + index * lineHeight);
-  });
-}
-
-function makeAiGeneratedImage(prompt) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext("2d");
-  const gradient = ctx.createLinearGradient(0, 0, 512, 512);
-  gradient.addColorStop(0, "#7f77dd");
-  gradient.addColorStop(1, "#378add");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 512, 512);
-
-  ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
-  ctx.beginPath();
-  ctx.arc(256, 168, 92, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "600 22px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  wrapCanvasText(ctx, prompt, 256, 286, 380, 28);
-
-  ctx.font = "500 13px sans-serif";
-  ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
-  ctx.fillText("AI generated", 256, 452);
-
-  return canvas.toDataURL("image/png");
-}
-
-function createAiLibraryItem(prompt) {
-  const trimmed = prompt.trim();
-  return {
-    id: `ai-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name: `AI: ${trimmed.slice(0, 40)}${trimmed.length > 40 ? "…" : ""}`,
-    url: makeAiGeneratedImage(trimmed),
-    source: "ai"
-  };
-}
-
-function ImageLibrary({
-  items,
-  onAdd,
-  onSelect,
-  onGenerateAi,
-  activeUrl,
-  emptyHint,
-  aiPlaceholder,
-  description,
-  showAiGenerate = true
-}) {
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [aiOpen, setAiOpen] = useState(false);
-
-  function handleGenerateAi() {
-    const prompt = aiPrompt.trim();
-    if (!prompt) return;
-    onGenerateAi(prompt);
-    setAiPrompt("");
-    setAiOpen(false);
-  }
-
+function ImageLibrary({ items, onAdd, onSelect, activeUrl, emptyHint, description }) {
   return (
     <div className="image-library">
       <div className="image-library-header">
@@ -1115,49 +1059,6 @@ function ImageLibrary({
             <img src={item.url} alt="" />
           </button>
         ))}
-        {showAiGenerate ? (
-          <div className="image-library-ai-wrap">
-            <button
-              type="button"
-              className={`image-library-ai-tile ${aiOpen ? "is-open" : ""}`}
-              aria-label="Generate with AI"
-              aria-expanded={aiOpen}
-              onClick={() => setAiOpen((open) => !open)}
-            >
-              <span className="image-library-ai-icon" aria-hidden="true">
-                ✨
-              </span>
-              <span className="image-library-ai-label">Generate with AI</span>
-            </button>
-            {aiOpen ? (
-              <div className="image-library-ai-popover">
-                <button
-                  type="button"
-                  className="image-library-ai-close"
-                  aria-label="Close"
-                  onClick={() => setAiOpen(false)}
-                >
-                  ×
-                </button>
-                <textarea
-                  className="image-library-ai-input"
-                  rows={2}
-                  placeholder={aiPlaceholder}
-                  value={aiPrompt}
-                  onChange={(event) => setAiPrompt(event.target.value)}
-                />
-                <button
-                  className="image-library-ai-generate"
-                  type="button"
-                  disabled={!aiPrompt.trim()}
-                  onClick={handleGenerateAi}
-                >
-                  Generate with AI
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
         {items.length === 0 ? <p className="image-library-empty">{emptyHint}</p> : null}
       </div>
     </div>
@@ -2228,22 +2129,14 @@ export default function App() {
     addImageToVersionBBoard(libraryItem);
   }
 
-  function generateVersionBValuesAiImage(prompt) {
-    const item = createAiLibraryItem(prompt);
-    setVersionBValuesLibrary((current) => [...current, item]);
-    addImageToVersionBBoard(item);
-  }
-
   function completeVersionBQuestions() {
     stopSpeechRecognition();
     const seeded = [];
     while (seeded.length < VERSION_B_VALUE_SLOTS) seeded.push("");
     const initial = seeded.slice(0, VERSION_B_VALUE_SLOTS);
-    const textItems = [];
-    const questionPhotoItems = createVersionBBoardImageItemsFromQuestionPhotos(versionBPhotos);
     setValues(initial.filter((text) => text.trim()));
     setValueIcons([]);
-    setVersionBBoardItems([...textItems, ...questionPhotoItems]);
+    setVersionBBoardItems(ensureQuestionPhotosOnVersionBBoard([], versionBPhotos));
     setVersionBSelectedBoardItemId(null);
     setPhaseOneScreen("values");
     window.setTimeout(() => {
@@ -2884,6 +2777,9 @@ export default function App() {
     const restoredBIcons = session.toolB?.valueIcons || [];
     const activeImportedValues = targetTool === "B" ? restoredBValues : restoredAValues;
     const activeImportedIcons = targetTool === "B" ? restoredBIcons : restoredAIcons;
+    const restoredQuestionPhotos = VERSION_B_QUESTIONS.map((_, index) =>
+      restorePhotoFromMetadata(session.toolB?.questions?.[index]?.photo)
+    );
     const restoredBoardItems =
       session.toolB?.boardItems?.length > 0
         ? session.toolB.boardItems.map((item) =>
@@ -2897,9 +2793,7 @@ export default function App() {
     setResearcherSessionLookup(sessionId);
     setAnswers(QUESTIONS.map((_, index) => session.toolA?.questions?.[index]?.answer || ""));
     setVersionBAnswers(VERSION_B_QUESTIONS.map((_, index) => session.toolB?.questions?.[index]?.answer || ""));
-    setVersionBPhotos(
-      VERSION_B_QUESTIONS.map((_, index) => restorePhotoFromMetadata(session.toolB?.questions?.[index]?.photo))
-    );
+    setVersionBPhotos(restoredQuestionPhotos);
     setValues(activeImportedValues);
     setValueIcons(activeImportedIcons);
     setToolAValues(restoredAValues);
@@ -2907,7 +2801,7 @@ export default function App() {
     setToolAGoalData({ ...GOAL_PLACEHOLDERS, ...(session.toolA?.goal || {}) });
     setToolBValues(restoredBValues);
     setToolBValueIcons(restoredBIcons);
-    setVersionBBoardItems(restoredBoardItems);
+    setVersionBBoardItems(ensureQuestionPhotosOnVersionBBoard(restoredBoardItems, restoredQuestionPhotos));
     setVersionBGoalShort(session.toolB?.goals?.shortTerm || "");
     setVersionBGoalLong(session.toolB?.goals?.longTerm || "");
     setAiSuggestedValues(restoredAiValues);
@@ -3050,10 +2944,17 @@ export default function App() {
     }
     const importedTexts = normalized.values.map((value) => value.text);
     const importedIcons = normalized.values.map((value) => value.icon || getValueIcon(value.text));
-    const importedBoardItems = [
-      ...createVersionBBoardItemsFromValues(importedTexts),
-      ...createVersionBBoardImageItemsFromQuestionPhotos(versionBPhotos)
-    ];
+    const draftForPhotos = readParticipantSessionDraft(targetSessionId);
+    const photosFromDraft = VERSION_B_QUESTIONS.map((_, index) =>
+      restorePhotoFromMetadata(draftForPhotos?.toolB?.questions?.[index]?.photo)
+    );
+    const questionPhotosForBoard = versionBPhotos.some((photo) => photo?.url || photo?.dataUrl)
+      ? versionBPhotos
+      : photosFromDraft;
+    const importedBoardItems = ensureQuestionPhotosOnVersionBBoard(
+      createVersionBBoardItemsFromValues(importedTexts),
+      questionPhotosForBoard
+    );
     setParticipantSessionId(targetSessionId);
     setResearcherSessionLookup(targetSessionId);
     setAiSuggestedValues(normalized.values);
@@ -4950,11 +4851,8 @@ export default function App() {
                       items={versionBValuesLibrary}
                       activeUrl={versionBSelectedBoardImageUrl}
                       emptyHint="Add starter photos to src/assets/image-library/version-b/values/"
-                      aiPlaceholder="Describe an image that represents this value..."
                       onAdd={addToVersionBValuesLibrary}
                       onSelect={selectVersionBValuesLibraryImage}
-                      onGenerateAi={generateVersionBValuesAiImage}
-                      showAiGenerate={false}
                     />
                   </>
                 ) : (
