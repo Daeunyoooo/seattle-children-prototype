@@ -1,0 +1,47 @@
+{
+  "goal": "For me to live a healthy, active life despite my CKD",
+  "values": [
+    {
+      "id": "y1",
+      "emoji": "👫",
+      "label": "Hang out with friends",
+      "description": "I want to hang out with friends without CKD being the main topic."
+    },
+    {
+      "id": "y2",
+      "emoji": "🗣️",
+      "label": "Feel heard in care",
+      "description": "I want my doctors and parents to really listen to what I think and feel."
+    },
+    {
+      "id": "y3",
+      "emoji": "⚽",
+      "label": "Play sports & games",
+      "description": "I want to keep playing the sports and games I love with my friends."
+    },
+    {
+      "id": "y4",
+      "emoji": "🎈",
+      "label": "Join in with everyone",
+      "description": "I want to take part in school, friendships, and family life just like any other kid."
+    },
+    {
+      "id": "y5",
+      "emoji": "😊",
+      "label": "Feel like a regular kid",
+      "description": "I don't want my CKD to make me stand out or be treated differently."
+    },
+    {
+      "id": "y6",
+      "emoji": "🍕",
+      "label": "Enjoy my favorite foods",
+      "description": "I want to sometimes eat my favorite foods — food is a big part of being a kid."
+    },
+    {
+      "id": "y7",
+      "emoji": "🫘",
+      "label": "Keep my kidneys working",
+      "description": "I want to keep my kidneys working as well as they can so I can feel good and do the things I love."
+    }
+  ]
+}

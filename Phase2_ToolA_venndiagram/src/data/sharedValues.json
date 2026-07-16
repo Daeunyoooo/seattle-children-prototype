@@ -1,0 +1,38 @@
+{
+  "youth_caregiver": [
+    {
+      "id": "yc1",
+      "emoji": "🎈",
+      "label": "Life Participation",
+      "description": "Being able to do the things you love — school, friends, activities, and everything that makes life meaningful",
+      "relatedValues": ["y4", "c1"]
+    }
+  ],
+  "youth_clinician": [
+    {
+      "id": "ycl1",
+      "emoji": "🗣️",
+      "label": "What matters to you",
+      "description": "The things in your life that are most important to you",
+      "relatedValues": ["y2", "cl5"]
+    }
+  ],
+  "caregiver_clinician": [
+    {
+      "id": "ccl1",
+      "emoji": "🌱",
+      "label": "Survival",
+      "description": "Reducing the risk of life-threatening complications",
+      "relatedValues": ["c2", "cl4"]
+    }
+  ],
+  "all": [
+    {
+      "id": "all1",
+      "emoji": "🫘",
+      "label": "Kidney Health",
+      "description": "Keeping your kidneys as healthy as they can be",
+      "relatedValues": ["y7", "c3", "cl2"]
+    }
+  ]
+}

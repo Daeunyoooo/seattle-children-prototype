@@ -1,0 +1,35 @@
+{
+  "goal": "To stabilize kidney function and support the child's long-term wellbeing",
+  "values": [
+    {
+      "id": "cl5",
+      "emoji": "🗣️",
+      "label": "What matters to you",
+      "description": "The things in your life that are most important to you"
+    },
+    {
+      "id": "cl1",
+      "emoji": "🛡️",
+      "label": "Preventing harm",
+      "description": "Keeping you safe from things that could hurt you or make you sicker"
+    },
+    {
+      "id": "cl2",
+      "emoji": "🫘",
+      "label": "Kidney Health",
+      "description": "Keeping your kidneys as healthy as they can be"
+    },
+    {
+      "id": "cl3",
+      "emoji": "🩸",
+      "label": "Blood Pressure Control",
+      "description": "Keeping your blood pressure at a level that protects your body"
+    },
+    {
+      "id": "cl4",
+      "emoji": "⏳",
+      "label": "Promoting long-term survival",
+      "description": "Reducing the risk of life-threatening complications"
+    }
+  ]
+}

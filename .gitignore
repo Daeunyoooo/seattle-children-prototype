@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.venv-connect/
+__pycache__/
+.env
+.env.local
+.env.*.local
+.DS_Store
+src/data/participantSessions/
+src/data/log-data/*
+!src/data/log-data/.gitkeep
+.connect-data*/
+*.duckdb
+*.duckdb.wal

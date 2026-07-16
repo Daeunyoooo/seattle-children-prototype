@@ -1,0 +1,23 @@
+{
+  "name": "seattle-children-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "api": "node server.js",
+    "dev:all": "node server.js & vite",
+    "build": "vite build",
+    "build:github": "vite build --outDir docs --emptyOutDir && cp docs/index.html docs/404.html",
+    "build:connect": "vite build",
+    "connect:dev": "uvicorn connect.app:app --host 0.0.0.0 --port 8080",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {}
+}

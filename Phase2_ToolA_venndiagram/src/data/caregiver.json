@@ -1,0 +1,29 @@
+{
+  "goal": "For my child to thrive medically, emotionally, and socially",
+  "values": [
+    {
+      "id": "c1",
+      "emoji": "🎈",
+      "label": "Life Participation",
+      "description": "Being able to do the things you love — school, friends, activities, and everything that makes life meaningful"
+    },
+    {
+      "id": "c2",
+      "emoji": "🌱",
+      "label": "Survival",
+      "description": "Reducing the risk of life-threatening complications"
+    },
+    {
+      "id": "c3",
+      "emoji": "💧",
+      "label": "Kidney Health",
+      "description": "Keeping your kidneys as healthy as they can be"
+    },
+    {
+      "id": "c4",
+      "emoji": "🧼",
+      "label": "Preventing Infections",
+      "description": "Protecting your body from getting sick, especially from infections that can be serious after a transplant"
+    }
+  ]
+}
