@@ -1254,6 +1254,8 @@ export default function App() {
   const sharedStrokesRef = useRef([]);
   const sharedActiveStrokeRef = useRef(null);
   const perValueDrawingImagesRef = useRef([]);
+  const initialParticipantSessionIdRef = useRef(participantSessionId);
+  const participantDraftRestoredRef = useRef(false);
   const selectedIdxRef = useRef(null);
   const interactModeRef = useRef(null);
   const interactStartRef = useRef({});
@@ -1300,6 +1302,19 @@ export default function App() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(PARTICIPANT_SESSION_STORAGE_KEY, participantSessionId);
   }, [participantSessionId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || researcherMode || participantDraftRestoredRef.current) return;
+    const initialSessionId = cleanValueText(initialParticipantSessionIdRef.current);
+    if (!initialSessionId) return;
+    const savedDraft = readParticipantSessionDraft(initialSessionId);
+    if (!savedDraft) return;
+    participantDraftRestoredRef.current = true;
+    applyParticipantSession(savedDraft, {
+      phase: savedDraft.phase ?? savedDraft.phaseTwo?.phase ?? 1,
+      screen: savedDraft.phaseOne?.currentScreen || "questions"
+    });
+  }, [researcherMode]);
 
   useEffect(() => {
     if (typeof window === "undefined" || researcherMode || !participantSessionId.trim()) return undefined;
@@ -1894,6 +1909,9 @@ export default function App() {
     completedPhaseOneTools,
     phaseOneVersion,
     phaseOneScreen,
+    phaseOneToolProgress,
+    currentQuestion,
+    versionBQuestionIndex,
     phase2SelectedValues,
     phase2SelectedGoalSources,
     aiSuggestedValues,
@@ -1947,6 +1965,9 @@ export default function App() {
     completedPhaseOneTools,
     phaseOneVersion,
     phaseOneScreen,
+    phaseOneToolProgress,
+    currentQuestion,
+    versionBQuestionIndex,
     phase2SelectedValues,
     phase2SelectedGoalSources,
     aiSuggestedValues,
@@ -2490,7 +2511,9 @@ export default function App() {
         toolOrder: phaseOneToolOrder,
         completedTools: completedPhaseOneTools,
         currentTool: phaseOneVersion,
-        currentScreen: phaseOneScreen
+        currentScreen: phaseOneScreen,
+        currentQuestionIndex: phaseOneVersion === "A" ? currentQuestion : versionBQuestionIndex,
+        toolProgress: phaseOneToolProgress
       },
       toolA: {
         questions: QUESTIONS.map((question, index) => ({
@@ -2874,28 +2897,36 @@ export default function App() {
     setAiSuggestedValues(restoredAiValues);
     setPhase2SelectedValues(session.phase2?.selectedValues || []);
     setPhase2SelectedGoalSources(session.phase2?.selectedGoalSources || ["A", "B"]);
-    setCompletedPhaseOneTools(session.phaseOne?.completedTools?.length ? session.phaseOne.completedTools : ["A", "B"]);
+    const restoredCompletedTools = Array.isArray(session.phaseOne?.completedTools)
+      ? session.phaseOne.completedTools
+      : ["A", "B"];
+    const restoredToolProgress = session.phaseOne?.toolProgress || {};
+    const restoredCurrentQuestionIndex = Math.max(0, Number(session.phaseOne?.currentQuestionIndex ?? 0) || 0);
+    setCompletedPhaseOneTools(restoredCompletedTools);
     setParticipantIntroComplete(true);
     setPhase(options.phase ?? session.phase ?? session.phaseTwo?.phase ?? 1);
     setPhaseOneVersion(targetTool);
     setPhaseOneToolProgress({
       A: {
-        screen:
-          session.toolA?.identifiedValues?.length || session.phaseOne?.completedTools?.includes("A")
-            ? "values"
-            : "questions",
-        questionIndex: 0
+        screen: restoredToolProgress.A?.screen ||
+          (session.toolA?.identifiedValues?.length || restoredCompletedTools.includes("A") ? "values" : "questions"),
+        questionIndex: restoredToolProgress.A?.questionIndex ?? (targetTool === "A" ? restoredCurrentQuestionIndex : 0)
       },
       B: {
-        screen:
-          session.toolB?.identifiedValues?.length ||
+        screen: restoredToolProgress.B?.screen ||
+          (session.toolB?.identifiedValues?.length ||
           session.toolB?.boardItems?.length ||
-          session.phaseOne?.completedTools?.includes("B")
+          restoredCompletedTools.includes("B")
             ? "values"
-            : "questions",
-        questionIndex: 0
+            : "questions"),
+        questionIndex: restoredToolProgress.B?.questionIndex ?? (targetTool === "B" ? restoredCurrentQuestionIndex : 0)
       }
     });
+    if (targetTool === "A") {
+      setCurrentQuestion(Math.min(restoredCurrentQuestionIndex, QUESTIONS.length - 1));
+    } else {
+      setVersionBQuestionIndex(Math.min(restoredCurrentQuestionIndex, VERSION_B_QUESTIONS.length - 1));
+    }
     setPhaseOneScreen(options.screen || session.phaseOne?.currentScreen || "summary");
     const restoredSelectedValues = session.phase2?.selectedValues || [];
     setDrawValues(restoredSelectedValues);
