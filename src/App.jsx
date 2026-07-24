@@ -4348,6 +4348,51 @@ export default function App() {
           )}
         </section>
 
+        {researcherWorkingWithCaregiver ? (
+          <section className="researcher-card researcher-workflow-card">
+            <h2>Caregiver only — Link Youth values for Phase 2</h2>
+            <p className="researcher-subtitle">
+              This is the only Caregiver-specific step. Upload the Youth Phase 1 or Phase 2 log JSON so Phase 2 shows
+              that Youth&apos;s identified values. The caregiver&apos;s own Phase 1 values stay as My values.
+            </p>
+            <div className="researcher-workflow-step">
+              <div className="researcher-step-label">Upload Youth session JSON</div>
+              <p>
+                Current caregiver ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Use the Youth-day
+                download file.
+              </p>
+              <label className="researcher-file-drop">
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={(event) => {
+                    importLinkedYouthValuesFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+                Upload Youth JSON file
+              </label>
+              {(loadedDraft?.linkedYouthValues || []).length > 0 ? (
+                <div className="researcher-value-list">
+                  <p className="researcher-draft-summary">
+                    Linked from {loadedDraft.linkedYouthParticipantId || "Youth"}
+                    {loadedDraft.linkedYouthSyncedAt
+                      ? ` · ${new Date(loadedDraft.linkedYouthSyncedAt).toLocaleString()}`
+                      : ""}
+                  </p>
+                  {loadedDraft.linkedYouthValues.map((value) => (
+                    <div className="researcher-value-chip" key={value}>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="researcher-draft-summary">No Youth values linked yet for this caregiver ID.</p>
+              )}
+            </div>
+          </section>
+        ) : null}
+
         <section className="researcher-card researcher-workflow-card">
           <h2>
             Phase 1 — Update {researcherWorkingWithCaregiver ? "Caregiver" : "Youth"} values with AI
@@ -4428,51 +4473,6 @@ export default function App() {
             ) : null}
           </div>
         </section>
-
-        {researcherWorkingWithCaregiver ? (
-          <section className="researcher-card researcher-workflow-card">
-            <h2>Caregiver only — Link Youth values for Phase 2</h2>
-            <p className="researcher-subtitle">
-              This is the only Caregiver-specific step. Upload the Youth Phase 1 or Phase 2 log JSON so Phase 2 shows
-              that Youth&apos;s identified values. The caregiver&apos;s own Phase 1 values stay as My values.
-            </p>
-            <div className="researcher-workflow-step">
-              <div className="researcher-step-label">Upload Youth session JSON</div>
-              <p>
-                Current caregiver ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Use the Youth-day
-                download file.
-              </p>
-              <label className="researcher-file-drop">
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={(event) => {
-                    importLinkedYouthValuesFile(event.target.files?.[0]);
-                    event.target.value = "";
-                  }}
-                />
-                Upload Youth JSON file
-              </label>
-              {(loadedDraft?.linkedYouthValues || []).length > 0 ? (
-                <div className="researcher-value-list">
-                  <p className="researcher-draft-summary">
-                    Linked from {loadedDraft.linkedYouthParticipantId || "Youth"}
-                    {loadedDraft.linkedYouthSyncedAt
-                      ? ` · ${new Date(loadedDraft.linkedYouthSyncedAt).toLocaleString()}`
-                      : ""}
-                  </p>
-                  {loadedDraft.linkedYouthValues.map((value) => (
-                    <div className="researcher-value-chip" key={value}>
-                      <strong>{value}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="researcher-draft-summary">No Youth values linked yet for this caregiver ID.</p>
-              )}
-            </div>
-          </section>
-        ) : null}
 
         <section className="researcher-card researcher-workflow-card">
           <h2>Session log data ({researcherWorkingWithCaregiver ? "Caregiver" : "Youth"})</h2>
