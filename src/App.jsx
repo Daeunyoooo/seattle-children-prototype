@@ -4288,7 +4288,8 @@ export default function App() {
         <section className="researcher-card researcher-participant-bar">
           <h2>Who are you working with?</h2>
           <p className="researcher-subtitle">
-            Choose Youth or Caregiver first. Caregiver mode is where you upload the Youth JSON file.
+            Youth and Caregiver use the same Phase 1 AI value workflow. Caregiver mode also lets you upload a Youth
+            JSON file for Phase 2.
           </p>
           <div className="role-entry-grid" role="group" aria-label="Researcher focus role">
             <button
@@ -4299,7 +4300,7 @@ export default function App() {
             >
               <span className="role-entry-card-kicker">Session type</span>
               <strong className="role-entry-card-title">Youth</strong>
-              <span className="role-entry-card-copy">AI value updates and Youth session log downloads.</span>
+              <span className="role-entry-card-copy">Same Phase 1 AI elicitation and session log downloads.</span>
             </button>
             <button
               type="button"
@@ -4309,7 +4310,9 @@ export default function App() {
             >
               <span className="role-entry-card-kicker">Session type</span>
               <strong className="role-entry-card-title">Caregiver</strong>
-              <span className="role-entry-card-copy">Upload Youth JSON and manage caregiver drafts.</span>
+              <span className="role-entry-card-copy">
+                Same Phase 1 AI elicitation, plus upload Youth JSON for Phase 2.
+              </span>
             </button>
           </div>
 
@@ -4345,24 +4348,99 @@ export default function App() {
           )}
         </section>
 
+        <section className="researcher-card researcher-workflow-card">
+          <h2>
+            Phase 1 — Update {researcherWorkingWithCaregiver ? "Caregiver" : "Youth"} values with AI
+          </h2>
+          <p className="researcher-subtitle">
+            Same workflow for Youth and Caregiver: export question responses for the hospital AI, then paste the AI
+            JSON back to update this participant&apos;s values.
+          </p>
+
+          <div className="researcher-workflow-step">
+            <div className="researcher-step-label">Step 1 — Export responses for AI</div>
+            <p>Download question responses as JSON and paste them into the hospital AI system.</p>
+            <label className="researcher-label researcher-tool-select">
+              Tool
+              <select value={researcherExportTool} onChange={(event) => setResearcherExportTool(event.target.value)}>
+                <option value="A">Tool A</option>
+                <option value="B">Tool B</option>
+              </select>
+            </label>
+            <button
+              className="primary"
+              type="button"
+              disabled={!cleanValueText(researcherSessionLookup)}
+              onClick={() => exportParticipantResponses()}
+            >
+              Download Tool {researcherExportTool} JSON
+            </button>
+          </div>
+
+          <div className="researcher-workflow-step">
+            <div className="researcher-step-label">Step 2 — Paste AI response and update participant values</div>
+            <p>
+              Paste the JSON returned from the hospital AI system. The{" "}
+              {researcherWorkingWithCaregiver ? "caregiver" : "youth"}
+              &apos;s values screen will update automatically.
+            </p>
+            <label className="researcher-label researcher-tool-select">
+              Tool
+              <select value={researcherImportTool} onChange={(event) => setResearcherImportTool(event.target.value)}>
+                <option value="A">Tool A</option>
+                <option value="B">Tool B</option>
+              </select>
+            </label>
+            <label className="researcher-file-drop">
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => {
+                  importAiValuesFile(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+              Upload AI JSON file
+            </label>
+            <div className="researcher-paste-box">
+              <label className="researcher-label">
+                Or paste AI JSON
+                <textarea
+                  className="researcher-json-paste"
+                  value={researcherJsonPaste}
+                  placeholder='{"sessionId":"P1","tool":"A","values":[{"text":"Staying healthy and strong","rationale":"..."}]}'
+                  onChange={(event) => setResearcherJsonPaste(event.target.value)}
+                />
+              </label>
+              <button type="button" disabled={!researcherJsonPaste.trim()} onClick={importPastedAiValues}>
+                Update participant values
+              </button>
+            </div>
+            {aiSuggestedValues.length > 0 ? (
+              <div className="researcher-value-list">
+                {aiSuggestedValues.map((value) => (
+                  <div className="researcher-value-chip" key={value.id}>
+                    <span>{value.icon || getValueIcon(value.text)}</span>
+                    <strong>{value.text}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
+
         {researcherWorkingWithCaregiver ? (
           <section className="researcher-card researcher-workflow-card">
-            <h2>Caregiver — Upload Youth values JSON</h2>
+            <h2>Caregiver only — Link Youth values for Phase 2</h2>
             <p className="researcher-subtitle">
-              Enter the <strong>caregiver</strong> Participant ID above, then upload the Youth Phase 1 or Phase 2 log
-              JSON from Youth day. This copies <code>phase2.selectedValues</code> into the caregiver session for Phase
-              2.
+              This is the only Caregiver-specific step. Upload the Youth Phase 1 or Phase 2 log JSON so Phase 2 shows
+              that Youth&apos;s identified values. The caregiver&apos;s own Phase 1 values stay as My values.
             </p>
             <div className="researcher-workflow-step">
-              <div className="researcher-step-label">1. Confirm caregiver ID is loaded</div>
+              <div className="researcher-step-label">Upload Youth session JSON</div>
               <p>
-                Current ID: <strong>{researcherSessionLookup || "(none)"}</strong>
-              </p>
-            </div>
-            <div className="researcher-workflow-step">
-              <div className="researcher-step-label">2. Upload Youth session JSON</div>
-              <p>
-                Use the file downloaded on Youth day. The caregiver&apos;s own values are not overwritten.
+                Current caregiver ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Use the Youth-day
+                download file.
               </p>
               <label className="researcher-file-drop">
                 <input
@@ -4394,81 +4472,7 @@ export default function App() {
               )}
             </div>
           </section>
-        ) : (
-          <section className="researcher-card researcher-workflow-card">
-            <h2>Phase 1 — Update Youth values with AI</h2>
-            <p className="researcher-subtitle">
-              Export question responses for the hospital AI, then paste the AI JSON back to update participant values.
-            </p>
-
-            <div className="researcher-workflow-step">
-              <div className="researcher-step-label">Step 1 — Export responses for AI</div>
-              <p>Download question responses as JSON and paste them into the hospital AI system.</p>
-              <label className="researcher-label researcher-tool-select">
-                Tool
-                <select value={researcherExportTool} onChange={(event) => setResearcherExportTool(event.target.value)}>
-                  <option value="A">Tool A</option>
-                  <option value="B">Tool B</option>
-                </select>
-              </label>
-              <button
-                className="primary"
-                type="button"
-                disabled={!cleanValueText(researcherSessionLookup)}
-                onClick={() => exportParticipantResponses()}
-              >
-                Download Tool {researcherExportTool} JSON
-              </button>
-            </div>
-
-            <div className="researcher-workflow-step">
-              <div className="researcher-step-label">Step 2 — Paste AI response and update participant values</div>
-              <p>Paste the JSON returned from the hospital AI system. The participant&apos;s values screen will update automatically.</p>
-              <label className="researcher-label researcher-tool-select">
-                Tool
-                <select value={researcherImportTool} onChange={(event) => setResearcherImportTool(event.target.value)}>
-                  <option value="A">Tool A</option>
-                  <option value="B">Tool B</option>
-                </select>
-              </label>
-              <label className="researcher-file-drop">
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={(event) => {
-                    importAiValuesFile(event.target.files?.[0]);
-                    event.target.value = "";
-                  }}
-                />
-                Upload AI JSON file
-              </label>
-              <div className="researcher-paste-box">
-                <label className="researcher-label">
-                  Or paste AI JSON
-                  <textarea
-                    className="researcher-json-paste"
-                    value={researcherJsonPaste}
-                    placeholder='{"sessionId":"P1","tool":"A","values":[{"text":"Staying healthy and strong","rationale":"..."}]}'
-                    onChange={(event) => setResearcherJsonPaste(event.target.value)}
-                  />
-                </label>
-                <button type="button" disabled={!researcherJsonPaste.trim()} onClick={importPastedAiValues}>
-                  Update participant values
-                </button>
-              </div>
-              {aiSuggestedValues.length > 0 ? (
-                <div className="researcher-value-list">
-                  {aiSuggestedValues.map((value) => (
-                    <div className="researcher-value-chip" key={value.id}>
-                      <span>{value.icon || getValueIcon(value.text)}</span>
-                      <strong>{value.text}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </section>
-        )}
+        ) : null}
 
         <section className="researcher-card researcher-workflow-card">
           <h2>Session log data ({researcherWorkingWithCaregiver ? "Caregiver" : "Youth"})</h2>
@@ -4617,7 +4621,7 @@ export default function App() {
                   <span className="role-entry-card-kicker">Start as</span>
                   <strong className="role-entry-card-title">Caregiver</strong>
                   <span className="role-entry-card-copy">
-                    Identify your values. Youth values are linked later by the researcher.
+                    Same Phase 1 tools and AI elicitation as Youth. Researcher later links Youth values for Phase 2.
                   </span>
                 </button>
               </div>
