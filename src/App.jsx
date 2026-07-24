@@ -272,9 +272,31 @@ function extractLinkedYouthValuesFromSessionJson(payload) {
   if (!values.length) {
     throw new Error("Youth JSON did not include any usable Phase 2 values.");
   }
+
+  const rawDrawings = Array.isArray(session.phaseTwo?.toolC?.perValueDrawings)
+    ? session.phaseTwo.toolC.perValueDrawings
+    : [];
+  const linkedYouthDrawings = values
+    .map((valueName, index) => {
+      const byName = rawDrawings.find(
+        (drawing) => cleanValueText(drawing?.valueName).toLowerCase() === valueName.toLowerCase()
+      );
+      const drawing = byName || rawDrawings[index] || null;
+      const pngDataUrl = drawing?.pngDataUrl || "";
+      if (!pngDataUrl) return null;
+      return {
+        valueName,
+        pngDataUrl,
+        pngWidth: Number(drawing?.pngWidth) || 240,
+        pngHeight: Number(drawing?.pngHeight) || 240
+      };
+    })
+    .filter(Boolean);
+
   return {
     linkedYouthParticipantId: cleanValueText(session.sessionId) || null,
     linkedYouthValues: values,
+    linkedYouthDrawings,
     linkedYouthSyncedAt: new Date().toISOString()
   };
 }
@@ -1122,6 +1144,7 @@ export default function App() {
   const [participantRole, setParticipantRole] = useState("youth");
   const [linkedYouthParticipantId, setLinkedYouthParticipantId] = useState("");
   const [linkedYouthValues, setLinkedYouthValues] = useState([]);
+  const [linkedYouthDrawings, setLinkedYouthDrawings] = useState([]);
   const [linkedYouthSyncedAt, setLinkedYouthSyncedAt] = useState(null);
   const [researcherSessionLookup, setResearcherSessionLookup] = useState(() => createInitialParticipantSessionId());
   const [researcherFocusRole, setResearcherFocusRole] = useState("youth");
@@ -1295,6 +1318,21 @@ export default function App() {
           : [];
         const nextLinkedId = cleanValueText(session.linkedYouthParticipantId) || "";
         const nextSyncedAt = session.linkedYouthSyncedAt || null;
+        const nextDrawings = Array.isArray(session.linkedYouthDrawings)
+          ? session.linkedYouthDrawings
+              .map((drawing) => {
+                const valueName = cleanValueText(drawing?.valueName);
+                const pngDataUrl = drawing?.pngDataUrl || "";
+                if (!valueName || !pngDataUrl) return null;
+                return {
+                  valueName,
+                  pngDataUrl,
+                  pngWidth: Number(drawing?.pngWidth) || 240,
+                  pngHeight: Number(drawing?.pngHeight) || 240
+                };
+              })
+              .filter(Boolean)
+          : [];
         setParticipantRole((current) =>
           session.role ? normalizeParticipantRole(session.role) : current
         );
@@ -1309,6 +1347,19 @@ export default function App() {
         });
         setLinkedYouthParticipantId((current) => (current === nextLinkedId ? current : nextLinkedId));
         setLinkedYouthSyncedAt((current) => (current === nextSyncedAt ? current : nextSyncedAt));
+        setLinkedYouthDrawings((current) => {
+          if (
+            current.length === nextDrawings.length &&
+            current.every(
+              (drawing, index) =>
+                drawing.valueName === nextDrawings[index]?.valueName &&
+                drawing.pngDataUrl === nextDrawings[index]?.pngDataUrl
+            )
+          ) {
+            return current;
+          }
+          return nextDrawings;
+        });
       }
 
       const waitingForAiValues =
@@ -1886,6 +1937,7 @@ export default function App() {
     participantRole,
     linkedYouthParticipantId,
     linkedYouthValues,
+    linkedYouthDrawings,
     linkedYouthSyncedAt,
     answers,
     versionBAnswers,
@@ -1946,6 +1998,7 @@ export default function App() {
     participantRole,
     linkedYouthParticipantId,
     linkedYouthValues,
+    linkedYouthDrawings,
     linkedYouthSyncedAt,
     answers,
     versionBAnswers,
@@ -2495,6 +2548,7 @@ export default function App() {
       role: participantRole,
       linkedYouthParticipantId: linkedYouthParticipantId || null,
       linkedYouthValues: linkedYouthValues,
+      linkedYouthDrawings: linkedYouthDrawings,
       linkedYouthSyncedAt: linkedYouthSyncedAt,
       sessionStatus: sessionSaved ? "phase2_saved" : "in_progress",
       participantFinished,
@@ -2832,6 +2886,23 @@ export default function App() {
     setLinkedYouthValues(
       Array.isArray(session.linkedYouthValues)
         ? session.linkedYouthValues.map(cleanValueText).filter(Boolean)
+        : []
+    );
+    setLinkedYouthDrawings(
+      Array.isArray(session.linkedYouthDrawings)
+        ? session.linkedYouthDrawings
+            .map((drawing) => {
+              const valueName = cleanValueText(drawing?.valueName);
+              const pngDataUrl = drawing?.pngDataUrl || "";
+              if (!valueName || !pngDataUrl) return null;
+              return {
+                valueName,
+                pngDataUrl,
+                pngWidth: Number(drawing?.pngWidth) || 240,
+                pngHeight: Number(drawing?.pngHeight) || 240
+              };
+            })
+            .filter(Boolean)
         : []
     );
     setLinkedYouthSyncedAt(session.linkedYouthSyncedAt || null);
@@ -3778,6 +3849,21 @@ export default function App() {
     let stakeholderComponents;
     if (participantRole === "caregiver") {
       const youthComponents = linkedYouthValues.map((valueName, index) => {
+        const linkedDrawing =
+          linkedYouthDrawings.find(
+            (drawing) => cleanValueText(drawing.valueName).toLowerCase() === cleanValueText(valueName).toLowerCase()
+          ) || linkedYouthDrawings[index] || null;
+        if (linkedDrawing?.pngDataUrl) {
+          return {
+            id: `youth-linked-${index}`,
+            owner: "youth",
+            ownerLabel: "Youth values",
+            label: valueName,
+            src: linkedDrawing.pngDataUrl,
+            w: linkedDrawing.pngWidth || 240,
+            h: linkedDrawing.pngHeight || 240
+          };
+        }
         const png = makeMockComponentPNG(
           { label: valueName, icon: getPhase2ValueIcon(valueName) },
           "#F59E0B",
@@ -4190,6 +4276,7 @@ export default function App() {
     setParticipantRole(normalizeParticipantRole(participantRole));
     setLinkedYouthParticipantId("");
     setLinkedYouthValues([]);
+    setLinkedYouthDrawings([]);
     setLinkedYouthSyncedAt(null);
     setParticipantIntroComplete(true);
   }
@@ -4227,6 +4314,7 @@ export default function App() {
       role: "caregiver",
       linkedYouthParticipantId: linked.linkedYouthParticipantId,
       linkedYouthValues: linked.linkedYouthValues,
+      linkedYouthDrawings: linked.linkedYouthDrawings,
       linkedYouthSyncedAt: linked.linkedYouthSyncedAt,
       updatedAt: new Date().toISOString(),
       sessionStatus: baseSession.sessionStatus || "in_progress"
@@ -4241,12 +4329,17 @@ export default function App() {
       setParticipantRole("caregiver");
       setLinkedYouthParticipantId(linked.linkedYouthParticipantId || "");
       setLinkedYouthValues(linked.linkedYouthValues);
+      setLinkedYouthDrawings(linked.linkedYouthDrawings);
       setLinkedYouthSyncedAt(linked.linkedYouthSyncedAt);
     }
     setResearcherDraftTick((current) => current + 1);
     const youthLabel = linked.linkedYouthParticipantId || "Youth";
+    const drawingNote =
+      linked.linkedYouthDrawings.length > 0
+        ? ` including ${linked.linkedYouthDrawings.length} Tool C drawing${linked.linkedYouthDrawings.length === 1 ? "" : "s"}`
+        : " (no Tool C drawings found — upload Youth Phase 2 JSON for images)";
     setResearcherStatus(
-      `Linked ${linked.linkedYouthValues.length} Youth value${linked.linkedYouthValues.length === 1 ? "" : "s"} from ${youthLabel} to caregiver ${targetSessionId}.`
+      `Linked ${linked.linkedYouthValues.length} Youth value${linked.linkedYouthValues.length === 1 ? "" : "s"} from ${youthLabel} to caregiver ${targetSessionId}${drawingNote}.`
     );
   }
 
@@ -4352,14 +4445,15 @@ export default function App() {
           <section className="researcher-card researcher-workflow-card">
             <h2>Caregiver only — Link Youth values for Phase 2</h2>
             <p className="researcher-subtitle">
-              This is the only Caregiver-specific step. Upload the Youth Phase 1 or Phase 2 log JSON so Phase 2 shows
-              that Youth&apos;s identified values. The caregiver&apos;s own Phase 1 values stay as My values.
+              This is the only Caregiver-specific step. Upload the Youth <strong>Phase 2</strong> log JSON so Phase 2
+              shows that Youth&apos;s identified values and their Tool C drawings. The caregiver&apos;s own Phase 1
+              values stay as My values.
             </p>
             <div className="researcher-workflow-step">
               <div className="researcher-step-label">Upload Youth session JSON</div>
               <p>
-                Current caregiver ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Use the Youth-day
-                download file.
+                Current caregiver ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Prefer the Youth Phase 2
+                download so Tool C images are included.
               </p>
               <label className="researcher-file-drop">
                 <input
@@ -4379,6 +4473,9 @@ export default function App() {
                     {loadedDraft.linkedYouthSyncedAt
                       ? ` · ${new Date(loadedDraft.linkedYouthSyncedAt).toLocaleString()}`
                       : ""}
+                    {` · ${(loadedDraft.linkedYouthDrawings || []).length} Tool C drawing${
+                      (loadedDraft.linkedYouthDrawings || []).length === 1 ? "" : "s"
+                    }`}
                   </p>
                   {loadedDraft.linkedYouthValues.map((value) => (
                     <div className="researcher-value-chip" key={value}>
