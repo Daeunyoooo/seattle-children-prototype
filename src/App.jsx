@@ -1118,11 +1118,13 @@ export default function App() {
   const [participantPassword, setParticipantPassword] = useState("");
   const [participantPasswordError, setParticipantPasswordError] = useState("");
   const [participantIntroComplete, setParticipantIntroComplete] = useState(false);
+  const [participantIntroStep, setParticipantIntroStep] = useState("role");
   const [participantRole, setParticipantRole] = useState("youth");
   const [linkedYouthParticipantId, setLinkedYouthParticipantId] = useState("");
   const [linkedYouthValues, setLinkedYouthValues] = useState([]);
   const [linkedYouthSyncedAt, setLinkedYouthSyncedAt] = useState(null);
   const [researcherSessionLookup, setResearcherSessionLookup] = useState(() => createInitialParticipantSessionId());
+  const [researcherFocusRole, setResearcherFocusRole] = useState("youth");
   const [researcherStatus, setResearcherStatus] = useState("");
   const [researcherJsonPaste, setResearcherJsonPaste] = useState("");
   const [researcherExportTool, setResearcherExportTool] = useState("A");
@@ -2930,6 +2932,7 @@ export default function App() {
     applyParticipantSession(session, {
       screen: session.phaseOne?.currentScreen || "questions"
     });
+    setResearcherFocusRole(normalizeParticipantRole(session.role) === "caregiver" ? "caregiver" : "youth");
     setResearcherDraftTick((current) => current + 1);
     setResearcherStatus(`Loaded local draft for ${cleanSessionId}. Storage: ${getStorageBackendLabel()}.`);
   }
@@ -4166,6 +4169,12 @@ export default function App() {
     setResearcherSessionLookup(nextId);
   }
 
+  function chooseParticipantIntroRole(role) {
+    setParticipantRole(normalizeParticipantRole(role));
+    setParticipantPasswordError("");
+    setParticipantIntroStep("credentials");
+  }
+
   function continueFromParticipantIntro() {
     if (!participantSessionId.trim()) return;
     if (participantPassword.trim() !== PARTICIPANT_ACCESS_PASSWORD) {
@@ -4266,6 +4275,7 @@ export default function App() {
     const phase2Ready = Boolean(loadedDraft?.participantFinished || loadedDraft?.phase === 2);
     const phase1SavedAt = loadedDraft?.checkpoints?.phase1?.savedAt;
     const phase2SavedAt = loadedDraft?.checkpoints?.phase2?.savedAt;
+    const researcherWorkingWithCaregiver = researcherFocusRole === "caregiver";
 
     return (
       <div className="app researcher-app">
@@ -4276,13 +4286,40 @@ export default function App() {
         </p>
 
         <section className="researcher-card researcher-participant-bar">
-          <div className="researcher-row">
+          <h2>Who are you working with?</h2>
+          <p className="researcher-subtitle">
+            Choose Youth or Caregiver first. Caregiver mode is where you upload the Youth JSON file.
+          </p>
+          <div className="role-entry-grid" role="group" aria-label="Researcher focus role">
+            <button
+              type="button"
+              className={`role-entry-card ${researcherFocusRole === "youth" ? "is-selected" : ""}`}
+              aria-pressed={researcherFocusRole === "youth"}
+              onClick={() => setResearcherFocusRole("youth")}
+            >
+              <span className="role-entry-card-kicker">Session type</span>
+              <strong className="role-entry-card-title">Youth</strong>
+              <span className="role-entry-card-copy">AI value updates and Youth session log downloads.</span>
+            </button>
+            <button
+              type="button"
+              className={`role-entry-card ${researcherFocusRole === "caregiver" ? "is-selected" : ""}`}
+              aria-pressed={researcherFocusRole === "caregiver"}
+              onClick={() => setResearcherFocusRole("caregiver")}
+            >
+              <span className="role-entry-card-kicker">Session type</span>
+              <strong className="role-entry-card-title">Caregiver</strong>
+              <span className="role-entry-card-copy">Upload Youth JSON and manage caregiver drafts.</span>
+            </button>
+          </div>
+
+          <div className="researcher-row" style={{ marginTop: 16 }}>
             <label className="researcher-label">
-              Participant ID
+              {researcherWorkingWithCaregiver ? "Caregiver Participant ID" : "Youth Participant ID"}
               <input
                 type="text"
                 value={researcherSessionLookup}
-                placeholder="P1"
+                placeholder={researcherWorkingWithCaregiver ? "C1" : "P1"}
                 onChange={(event) => setResearcherSessionLookup(event.target.value.trim())}
               />
             </label>
@@ -4308,123 +4345,133 @@ export default function App() {
           )}
         </section>
 
-        <section className="researcher-card researcher-workflow-card">
-          <h2>Caregiver — Link Youth values</h2>
-          <p className="researcher-subtitle">
-            Load the caregiver Participant ID above, then upload the Youth Phase 1 or Phase 2 log JSON downloaded
-            earlier. This copies <code>phase2.selectedValues</code> into the caregiver session for Phase 2.
-          </p>
-          <div className="researcher-workflow-step">
-            <div className="researcher-step-label">Upload Youth session JSON</div>
-            <p>
-              Use the file from Youth day (Phase 1 or Phase 2 download). The caregiver&apos;s own values are not
-              overwritten.
+        {researcherWorkingWithCaregiver ? (
+          <section className="researcher-card researcher-workflow-card">
+            <h2>Caregiver — Upload Youth values JSON</h2>
+            <p className="researcher-subtitle">
+              Enter the <strong>caregiver</strong> Participant ID above, then upload the Youth Phase 1 or Phase 2 log
+              JSON from Youth day. This copies <code>phase2.selectedValues</code> into the caregiver session for Phase
+              2.
             </p>
-            <label className="researcher-file-drop">
-              <input
-                type="file"
-                accept="application/json,.json"
-                onChange={(event) => {
-                  importLinkedYouthValuesFile(event.target.files?.[0]);
-                  event.target.value = "";
-                }}
-              />
-              Upload Youth JSON file
-            </label>
-            {loadedDraft?.role === "caregiver" && (loadedDraft.linkedYouthValues || []).length > 0 ? (
-              <div className="researcher-value-list">
-                <p className="researcher-draft-summary">
-                  Linked from {loadedDraft.linkedYouthParticipantId || "Youth"}
-                  {loadedDraft.linkedYouthSyncedAt
-                    ? ` · ${new Date(loadedDraft.linkedYouthSyncedAt).toLocaleString()}`
-                    : ""}
-                </p>
-                {loadedDraft.linkedYouthValues.map((value) => (
-                  <div className="researcher-value-chip" key={value}>
-                    <strong>{value}</strong>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="researcher-card researcher-workflow-card">
-          <h2>Phase 1 — Update participant values with AI</h2>
-          <p className="researcher-subtitle">
-            Export question responses for the hospital AI, then paste the AI JSON back to update participant values.
-          </p>
-
-          <div className="researcher-workflow-step">
-            <div className="researcher-step-label">Step 1 — Export responses for AI</div>
-            <p>Download question responses as JSON and paste them into the hospital AI system.</p>
-            <label className="researcher-label researcher-tool-select">
-              Tool
-              <select value={researcherExportTool} onChange={(event) => setResearcherExportTool(event.target.value)}>
-                <option value="A">Tool A</option>
-                <option value="B">Tool B</option>
-              </select>
-            </label>
-            <button
-              className="primary"
-              type="button"
-              disabled={!cleanValueText(researcherSessionLookup)}
-              onClick={() => exportParticipantResponses()}
-            >
-              Download Tool {researcherExportTool} JSON
-            </button>
-          </div>
-
-          <div className="researcher-workflow-step">
-            <div className="researcher-step-label">Step 2 — Paste AI response and update participant values</div>
-            <p>Paste the JSON returned from the hospital AI system. The participant&apos;s values screen will update automatically.</p>
-            <label className="researcher-label researcher-tool-select">
-              Tool
-              <select value={researcherImportTool} onChange={(event) => setResearcherImportTool(event.target.value)}>
-                <option value="A">Tool A</option>
-                <option value="B">Tool B</option>
-              </select>
-            </label>
-            <label className="researcher-file-drop">
-              <input
-                type="file"
-                accept="application/json,.json"
-                onChange={(event) => {
-                  importAiValuesFile(event.target.files?.[0]);
-                  event.target.value = "";
-                }}
-              />
-              Upload AI JSON file
-            </label>
-            <div className="researcher-paste-box">
-              <label className="researcher-label">
-                Or paste AI JSON
-                <textarea
-                  className="researcher-json-paste"
-                  value={researcherJsonPaste}
-                  placeholder='{"sessionId":"P1","tool":"A","values":[{"text":"Staying healthy and strong","rationale":"..."}]}'
-                  onChange={(event) => setResearcherJsonPaste(event.target.value)}
+            <div className="researcher-workflow-step">
+              <div className="researcher-step-label">1. Confirm caregiver ID is loaded</div>
+              <p>
+                Current ID: <strong>{researcherSessionLookup || "(none)"}</strong>
+              </p>
+            </div>
+            <div className="researcher-workflow-step">
+              <div className="researcher-step-label">2. Upload Youth session JSON</div>
+              <p>
+                Use the file downloaded on Youth day. The caregiver&apos;s own values are not overwritten.
+              </p>
+              <label className="researcher-file-drop">
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={(event) => {
+                    importLinkedYouthValuesFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
                 />
+                Upload Youth JSON file
               </label>
-              <button type="button" disabled={!researcherJsonPaste.trim()} onClick={importPastedAiValues}>
-                Update participant values
+              {(loadedDraft?.linkedYouthValues || []).length > 0 ? (
+                <div className="researcher-value-list">
+                  <p className="researcher-draft-summary">
+                    Linked from {loadedDraft.linkedYouthParticipantId || "Youth"}
+                    {loadedDraft.linkedYouthSyncedAt
+                      ? ` · ${new Date(loadedDraft.linkedYouthSyncedAt).toLocaleString()}`
+                      : ""}
+                  </p>
+                  {loadedDraft.linkedYouthValues.map((value) => (
+                    <div className="researcher-value-chip" key={value}>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="researcher-draft-summary">No Youth values linked yet for this caregiver ID.</p>
+              )}
+            </div>
+          </section>
+        ) : (
+          <section className="researcher-card researcher-workflow-card">
+            <h2>Phase 1 — Update Youth values with AI</h2>
+            <p className="researcher-subtitle">
+              Export question responses for the hospital AI, then paste the AI JSON back to update participant values.
+            </p>
+
+            <div className="researcher-workflow-step">
+              <div className="researcher-step-label">Step 1 — Export responses for AI</div>
+              <p>Download question responses as JSON and paste them into the hospital AI system.</p>
+              <label className="researcher-label researcher-tool-select">
+                Tool
+                <select value={researcherExportTool} onChange={(event) => setResearcherExportTool(event.target.value)}>
+                  <option value="A">Tool A</option>
+                  <option value="B">Tool B</option>
+                </select>
+              </label>
+              <button
+                className="primary"
+                type="button"
+                disabled={!cleanValueText(researcherSessionLookup)}
+                onClick={() => exportParticipantResponses()}
+              >
+                Download Tool {researcherExportTool} JSON
               </button>
             </div>
-            {aiSuggestedValues.length > 0 ? (
-              <div className="researcher-value-list">
-                {aiSuggestedValues.map((value) => (
-                  <div className="researcher-value-chip" key={value.id}>
-                    <span>{value.icon || getValueIcon(value.text)}</span>
-                    <strong>{value.text}</strong>
-                  </div>
-                ))}
+
+            <div className="researcher-workflow-step">
+              <div className="researcher-step-label">Step 2 — Paste AI response and update participant values</div>
+              <p>Paste the JSON returned from the hospital AI system. The participant&apos;s values screen will update automatically.</p>
+              <label className="researcher-label researcher-tool-select">
+                Tool
+                <select value={researcherImportTool} onChange={(event) => setResearcherImportTool(event.target.value)}>
+                  <option value="A">Tool A</option>
+                  <option value="B">Tool B</option>
+                </select>
+              </label>
+              <label className="researcher-file-drop">
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={(event) => {
+                    importAiValuesFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+                Upload AI JSON file
+              </label>
+              <div className="researcher-paste-box">
+                <label className="researcher-label">
+                  Or paste AI JSON
+                  <textarea
+                    className="researcher-json-paste"
+                    value={researcherJsonPaste}
+                    placeholder='{"sessionId":"P1","tool":"A","values":[{"text":"Staying healthy and strong","rationale":"..."}]}'
+                    onChange={(event) => setResearcherJsonPaste(event.target.value)}
+                  />
+                </label>
+                <button type="button" disabled={!researcherJsonPaste.trim()} onClick={importPastedAiValues}>
+                  Update participant values
+                </button>
               </div>
-            ) : null}
-          </div>
-        </section>
+              {aiSuggestedValues.length > 0 ? (
+                <div className="researcher-value-list">
+                  {aiSuggestedValues.map((value) => (
+                    <div className="researcher-value-chip" key={value.id}>
+                      <span>{value.icon || getValueIcon(value.text)}</span>
+                      <strong>{value.text}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        )}
 
         <section className="researcher-card researcher-workflow-card">
-          <h2>Session log data</h2>
+          <h2>Session log data ({researcherWorkingWithCaregiver ? "Caregiver" : "Youth"})</h2>
           <p className="researcher-subtitle">
             Download participant log JSON directly to this computer. Nothing is uploaded to GitHub Pages. Tool C PNG
             data is embedded in the Phase 2 JSON.
@@ -4544,89 +4591,129 @@ export default function App() {
       <h2 className="sr-only">Value elicitation and visualization tool</h2>
       {!participantIntroComplete ? (
         <div className="participant-id-card participant-id-card--intro">
-          <div>
-            <h1 className="participant-id-title">Before we start</h1>
-            <p className="participant-id-subtitle">
-              Choose who is using the tool, then enter the participant ID and password assigned by the researcher.
-            </p>
-          </div>
-          <fieldset className="participant-role-fieldset">
-            <legend className="participant-id-label">I am a</legend>
-            <div className="participant-role-toggle" role="group" aria-label="Participant role">
-              <button
-                type="button"
-                className={`participant-role-option ${participantRole === "youth" ? "is-selected" : ""}`}
-                aria-pressed={participantRole === "youth"}
-                onClick={() => setParticipantRole("youth")}
-              >
-                Youth
-              </button>
-              <button
-                type="button"
-                className={`participant-role-option ${participantRole === "caregiver" ? "is-selected" : ""}`}
-                aria-pressed={participantRole === "caregiver"}
-                onClick={() => setParticipantRole("caregiver")}
-              >
-                Caregiver
-              </button>
-            </div>
-          </fieldset>
-          <label className="participant-id-label">
-            Participant ID
-            <input
-              type="text"
-              value={participantSessionId}
-              placeholder="P1"
-              onChange={(event) => updateParticipantSessionId(event.target.value)}
-              autoFocus
-            />
-          </label>
-          <label className="participant-id-label">
-            Password
-            <input
-              type="password"
-              value={participantPassword}
-              placeholder="Enter password"
-              autoComplete="off"
-              onChange={(event) => {
-                setParticipantPassword(event.target.value);
-                if (participantPasswordError) setParticipantPasswordError("");
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") continueFromParticipantIntro();
-              }}
-            />
-          </label>
-          {participantRole === "caregiver" ? (
-            <p className="participant-id-subtitle">
-              After you start, the researcher can upload the Youth session JSON to show that Youth&apos;s values in
-              Phase 2.
-            </p>
-          ) : null}
-          {participantPasswordError ? (
-            <p className="participant-id-error" role="alert">
-              {participantPasswordError}
-            </p>
-          ) : null}
-          <div className="participant-id-actions">
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, "", getResearcherPath());
-                window.location.reload();
-              }}
-            >
-              Researcher dashboard
-            </button>
-            <button
-              className="primary"
-              type="button"
-              disabled={!participantSessionId.trim() || !participantPassword.trim()}
-              onClick={continueFromParticipantIntro}
-            >
-              Next
-            </button>
-          </div>
+          {participantIntroStep === "role" ? (
+            <>
+              <div>
+                <h1 className="participant-id-title">Before we start</h1>
+                <p className="participant-id-subtitle">
+                  Choose who is using the tool. You will enter the Participant ID on the next step.
+                </p>
+              </div>
+              <div className="role-entry-grid" role="group" aria-label="Participant role">
+                <button
+                  type="button"
+                  className="role-entry-card"
+                  onClick={() => chooseParticipantIntroRole("youth")}
+                >
+                  <span className="role-entry-card-kicker">Start as</span>
+                  <strong className="role-entry-card-title">Youth</strong>
+                  <span className="role-entry-card-copy">Identify your own values in Phase 1 and Phase 2.</span>
+                </button>
+                <button
+                  type="button"
+                  className="role-entry-card"
+                  onClick={() => chooseParticipantIntroRole("caregiver")}
+                >
+                  <span className="role-entry-card-kicker">Start as</span>
+                  <strong className="role-entry-card-title">Caregiver</strong>
+                  <span className="role-entry-card-copy">
+                    Identify your values. Youth values are linked later by the researcher.
+                  </span>
+                </button>
+              </div>
+              <div className="participant-id-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.history.pushState({}, "", getResearcherPath());
+                    window.location.reload();
+                  }}
+                >
+                  Researcher dashboard
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <h1 className="participant-id-title">
+                  {participantRole === "caregiver" ? "Caregiver" : "Youth"} sign-in
+                </h1>
+                <p className="participant-id-subtitle">
+                  Enter the {participantRole === "caregiver" ? "caregiver" : "youth"} Participant ID and password
+                  assigned by the researcher.
+                </p>
+              </div>
+              <div className="role-entry-grid role-entry-grid--compact" role="group" aria-label="Selected role">
+                <button
+                  type="button"
+                  className={`role-entry-card ${participantRole === "youth" ? "is-selected" : ""}`}
+                  aria-pressed={participantRole === "youth"}
+                  onClick={() => setParticipantRole("youth")}
+                >
+                  <strong className="role-entry-card-title">Youth</strong>
+                </button>
+                <button
+                  type="button"
+                  className={`role-entry-card ${participantRole === "caregiver" ? "is-selected" : ""}`}
+                  aria-pressed={participantRole === "caregiver"}
+                  onClick={() => setParticipantRole("caregiver")}
+                >
+                  <strong className="role-entry-card-title">Caregiver</strong>
+                </button>
+              </div>
+              <label className="participant-id-label">
+                Participant ID
+                <input
+                  type="text"
+                  value={participantSessionId}
+                  placeholder={participantRole === "caregiver" ? "C1" : "P1"}
+                  onChange={(event) => updateParticipantSessionId(event.target.value)}
+                  autoFocus
+                />
+              </label>
+              <label className="participant-id-label">
+                Password
+                <input
+                  type="password"
+                  value={participantPassword}
+                  placeholder="Enter password"
+                  autoComplete="off"
+                  onChange={(event) => {
+                    setParticipantPassword(event.target.value);
+                    if (participantPasswordError) setParticipantPasswordError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") continueFromParticipantIntro();
+                  }}
+                />
+              </label>
+              {participantRole === "caregiver" ? (
+                <p className="participant-id-subtitle">
+                  After you start, the researcher opens Caregiver mode and uploads the Youth session JSON so Youth
+                  values appear in Phase 2.
+                </p>
+              ) : null}
+              {participantPasswordError ? (
+                <p className="participant-id-error" role="alert">
+                  {participantPasswordError}
+                </p>
+              ) : null}
+              <div className="participant-id-actions">
+                <button type="button" onClick={() => setParticipantIntroStep("role")}>
+                  ← Back
+                </button>
+                <button
+                  className="primary"
+                  type="button"
+                  disabled={!participantSessionId.trim() || !participantPassword.trim()}
+                  onClick={continueFromParticipantIntro}
+                >
+                  Next
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ) : null}
       {participantIntroComplete ? (
