@@ -237,6 +237,47 @@ const PARTICIPANT_SESSION_DRAFT_PREFIX = "seattle-children-session:";
 const PARTICIPANT_SESSION_SYNC_CHANNEL = "seattle-children-session-sync";
 const PARTICIPANT_EXPORT_SCHEMA = PARTICIPANT_EXPORT_SCHEMA_V2;
 const AI_VALUES_IMPORT_SCHEMA = "seattle-childrens.ai-values.v1";
+const PARTICIPANT_ROLES = ["youth", "caregiver"];
+
+function normalizeParticipantRole(role) {
+  return PARTICIPANT_ROLES.includes(role) ? role : "youth";
+}
+
+function mapTextsToPhase2ValueItems(texts, idPrefix, iconForValue) {
+  return (Array.isArray(texts) ? texts : [])
+    .map((text, index) => {
+      const label = cleanValueText(text);
+      if (!label) return null;
+      return {
+        id: `${idPrefix}-${index}`,
+        label,
+        text: label,
+        emoji: iconForValue?.(label) || getValueIcon(label),
+        description: label
+      };
+    })
+    .filter(Boolean);
+}
+
+function extractLinkedYouthValuesFromSessionJson(payload) {
+  const session = payload?.session && typeof payload.session === "object" ? payload.session : payload;
+  if (!session || typeof session !== "object") {
+    throw new Error("Youth JSON must be a participant session export.");
+  }
+  const selected = session.phase2?.selectedValues;
+  if (!Array.isArray(selected) || selected.length === 0) {
+    throw new Error("Youth JSON must include phase2.selectedValues (non-empty). Download the Youth Phase 1 or Phase 2 log first.");
+  }
+  const values = selected.map(cleanValueText).filter(Boolean);
+  if (!values.length) {
+    throw new Error("Youth JSON did not include any usable Phase 2 values.");
+  }
+  return {
+    linkedYouthParticipantId: cleanValueText(session.sessionId) || null,
+    linkedYouthValues: values,
+    linkedYouthSyncedAt: new Date().toISOString()
+  };
+}
 
 function createParticipantSessionId() {
   const randomPart =
@@ -1077,6 +1118,10 @@ export default function App() {
   const [participantPassword, setParticipantPassword] = useState("");
   const [participantPasswordError, setParticipantPasswordError] = useState("");
   const [participantIntroComplete, setParticipantIntroComplete] = useState(false);
+  const [participantRole, setParticipantRole] = useState("youth");
+  const [linkedYouthParticipantId, setLinkedYouthParticipantId] = useState("");
+  const [linkedYouthValues, setLinkedYouthValues] = useState([]);
+  const [linkedYouthSyncedAt, setLinkedYouthSyncedAt] = useState(null);
   const [researcherSessionLookup, setResearcherSessionLookup] = useState(() => createInitialParticipantSessionId());
   const [researcherStatus, setResearcherStatus] = useState("");
   const [researcherJsonPaste, setResearcherJsonPaste] = useState("");
@@ -1238,6 +1283,32 @@ export default function App() {
 
     function maybeApplyImportedValues(session) {
       if (!session || session.sessionId !== participantSessionId) return;
+
+      if (
+        normalizeParticipantRole(session.role) === "caregiver" ||
+        Array.isArray(session.linkedYouthValues)
+      ) {
+        const nextLinked = Array.isArray(session.linkedYouthValues)
+          ? session.linkedYouthValues.map(cleanValueText).filter(Boolean)
+          : [];
+        const nextLinkedId = cleanValueText(session.linkedYouthParticipantId) || "";
+        const nextSyncedAt = session.linkedYouthSyncedAt || null;
+        setParticipantRole((current) =>
+          session.role ? normalizeParticipantRole(session.role) : current
+        );
+        setLinkedYouthValues((current) => {
+          if (
+            current.length === nextLinked.length &&
+            current.every((value, index) => value === nextLinked[index])
+          ) {
+            return current;
+          }
+          return nextLinked;
+        });
+        setLinkedYouthParticipantId((current) => (current === nextLinkedId ? current : nextLinkedId));
+        setLinkedYouthSyncedAt((current) => (current === nextSyncedAt ? current : nextSyncedAt));
+      }
+
       const waitingForAiValues =
         phase === 1 &&
         phaseOneScreen === "values" &&
@@ -1406,19 +1477,20 @@ export default function App() {
     return map;
   }, [summaryValueItems]);
 
-  const phase2YouthValueItems = useMemo(
-    () =>
-      phase2SelectedValues
-        .map((text, index) => ({
-          id: `phase2-youth-${index}`,
-          label: text,
-          text,
-          emoji: getPhase2ValueIcon(text),
-          description: text
-        }))
-        .filter((item) => item.text.trim()),
-    [phase2SelectedValues, phase2ValueIconMap]
-  );
+  const phase2YouthValueItems = useMemo(() => {
+    if (participantRole === "caregiver") {
+      return mapTextsToPhase2ValueItems(linkedYouthValues, "phase2-youth", (text) => getPhase2ValueIcon(text));
+    }
+    return mapTextsToPhase2ValueItems(phase2SelectedValues, "phase2-youth", (text) => getPhase2ValueIcon(text));
+  }, [participantRole, linkedYouthValues, phase2SelectedValues, phase2ValueIconMap]);
+
+  const phase2CaregiverValueItems = useMemo(() => {
+    if (participantRole !== "caregiver") return [];
+    return mapTextsToPhase2ValueItems(phase2SelectedValues, "phase2-caregiver", (text) => getPhase2ValueIcon(text));
+  }, [participantRole, phase2SelectedValues, phase2ValueIconMap]);
+
+  const caregiverMissingYouthLink =
+    participantRole === "caregiver" && phase === 2 && linkedYouthValues.length === 0;
 
   const phaseOneSecondTool = phaseOneToolOrder[1];
 
@@ -1809,6 +1881,10 @@ export default function App() {
     participantIntroComplete,
     researcherMode,
     participantSessionId,
+    participantRole,
+    linkedYouthParticipantId,
+    linkedYouthValues,
+    linkedYouthSyncedAt,
     answers,
     versionBAnswers,
     versionBPhotos,
@@ -1865,6 +1941,10 @@ export default function App() {
     participantIntroComplete,
     researcherMode,
     participantSessionId,
+    participantRole,
+    linkedYouthParticipantId,
+    linkedYouthValues,
+    linkedYouthSyncedAt,
     answers,
     versionBAnswers,
     versionBPhotos,
@@ -2410,6 +2490,10 @@ export default function App() {
     return {
       schema: PARTICIPANT_EXPORT_SCHEMA,
       sessionId: participantSessionId,
+      role: participantRole,
+      linkedYouthParticipantId: linkedYouthParticipantId || null,
+      linkedYouthValues: linkedYouthValues,
+      linkedYouthSyncedAt: linkedYouthSyncedAt,
       sessionStatus: sessionSaved ? "phase2_saved" : "in_progress",
       participantFinished,
       checkpoints: readParticipantSessionDraft(participantSessionId)?.checkpoints || {},
@@ -2741,6 +2825,14 @@ export default function App() {
     const sessionId = cleanValueText(session.sessionId || researcherSessionLookup || participantSessionId);
     setParticipantSessionId(sessionId);
     setResearcherSessionLookup(sessionId);
+    setParticipantRole(normalizeParticipantRole(session.role));
+    setLinkedYouthParticipantId(cleanValueText(session.linkedYouthParticipantId) || "");
+    setLinkedYouthValues(
+      Array.isArray(session.linkedYouthValues)
+        ? session.linkedYouthValues.map(cleanValueText).filter(Boolean)
+        : []
+    );
+    setLinkedYouthSyncedAt(session.linkedYouthSyncedAt || null);
     setAnswers(QUESTIONS.map((_, index) => session.toolA?.questions?.[index]?.answer || ""));
     setVersionBAnswers(VERSION_B_QUESTIONS.map((_, index) => session.toolB?.questions?.[index]?.answer || ""));
     setVersionBPhotos(restoredQuestionPhotos);
@@ -3665,13 +3757,14 @@ export default function App() {
     snapshotPerValueDrawings();
     selectedIdxRef.current = null;
     drawComposite();
+    const myOwner = participantRole === "caregiver" ? "caregiver" : "youth";
     const myComponents = drawValues.map((valueName, index) => {
       const canvasState = canvasStatesRef.current[index];
       const exported = exportCroppedPNG(canvasState);
       const fallback = exported || makeMockComponentPNG({ shape: "circle" }, COLORS[index % COLORS.length], index);
       return {
-        id: `youth-${index}`,
-        owner: "youth",
+        id: `${myOwner}-${index}`,
+        owner: myOwner,
         ownerLabel: "My values",
         label: valueName || canvasState?.valueName || `Value ${index + 1}`,
         src: fallback.dataURL,
@@ -3679,20 +3772,58 @@ export default function App() {
         h: fallback.h
       };
     });
-    const stakeholderComponents = STAKEHOLDER_COMPONENT_SETS.flatMap((set) =>
-      set.components.map((component, index) => {
-        const png = makeMockComponentPNG(component, set.color, index);
+    let stakeholderComponents;
+    if (participantRole === "caregiver") {
+      const youthComponents = linkedYouthValues.map((valueName, index) => {
+        const png = makeMockComponentPNG(
+          { label: valueName, icon: getPhase2ValueIcon(valueName) },
+          "#F59E0B",
+          index
+        );
         return {
-          id: `${set.role}-${index}`,
-          owner: set.role,
-          ownerLabel: `${set.label} values`,
-          label: component.label,
+          id: `youth-linked-${index}`,
+          owner: "youth",
+          ownerLabel: "Youth values",
+          label: valueName,
           src: png.dataURL,
           w: png.w,
           h: png.h
         };
-      })
-    );
+      });
+      const nonCaregiverSets = STAKEHOLDER_COMPONENT_SETS.filter((set) => set.role !== "caregiver");
+      stakeholderComponents = [
+        ...youthComponents,
+        ...nonCaregiverSets.flatMap((set) =>
+          set.components.map((component, index) => {
+            const png = makeMockComponentPNG(component, set.color, index);
+            return {
+              id: `${set.role}-${index}`,
+              owner: set.role,
+              ownerLabel: `${set.label} values`,
+              label: component.label,
+              src: png.dataURL,
+              w: png.w,
+              h: png.h
+            };
+          })
+        )
+      ];
+    } else {
+      stakeholderComponents = STAKEHOLDER_COMPONENT_SETS.flatMap((set) =>
+        set.components.map((component, index) => {
+          const png = makeMockComponentPNG(component, set.color, index);
+          return {
+            id: `${set.role}-${index}`,
+            owner: set.role,
+            ownerLabel: `${set.label} values`,
+            label: component.label,
+            src: png.dataURL,
+            w: png.w,
+            h: png.h
+          };
+        })
+      );
+    }
     setComponentTray([...myComponents, ...stakeholderComponents]);
     setPlacedComponents([]);
     setSelectedPlacedId(null);
@@ -4047,7 +4178,82 @@ export default function App() {
       applyParticipantSession(savedDraft, { screen: savedDraft.phaseOne?.currentScreen || "questions" });
       return;
     }
+    setParticipantRole(normalizeParticipantRole(participantRole));
+    setLinkedYouthParticipantId("");
+    setLinkedYouthValues([]);
+    setLinkedYouthSyncedAt(null);
     setParticipantIntroComplete(true);
+  }
+
+  async function applyLinkedYouthValuesImport(payload) {
+    const linked = extractLinkedYouthValuesFromSessionJson(payload);
+    const targetSessionId = cleanValueText(researcherSessionLookup) || participantSessionId;
+    if (!targetSessionId) {
+      setResearcherStatus("Enter the caregiver Participant ID first, then upload the Youth JSON.");
+      return;
+    }
+    const baseSession = readParticipantSessionDraft(targetSessionId) || {
+      schema: PARTICIPANT_EXPORT_SCHEMA,
+      sessionId: targetSessionId,
+      role: "caregiver",
+      phase: 1,
+      phaseOne: { currentScreen: "questions", completedTools: [], currentTool: "A" },
+      phase2: { selectedValues: [], selectedGoalSources: ["A", "B"] }
+    };
+    const looksLikeYouthSession =
+      normalizeParticipantRole(baseSession.role) === "youth" &&
+      ((baseSession.phase2?.selectedValues || []).length > 0 ||
+        (baseSession.toolA?.identifiedValues || []).length > 0 ||
+        (baseSession.toolB?.identifiedValues || []).length > 0);
+    if (looksLikeYouthSession) {
+      setResearcherStatus(
+        `Participant ${targetSessionId} looks like a Youth session. Enter the caregiver Participant ID, then upload the Youth JSON.`
+      );
+      return;
+    }
+    const linkedSession = {
+      ...baseSession,
+      schema: PARTICIPANT_EXPORT_SCHEMA,
+      sessionId: targetSessionId,
+      role: "caregiver",
+      linkedYouthParticipantId: linked.linkedYouthParticipantId,
+      linkedYouthValues: linked.linkedYouthValues,
+      linkedYouthSyncedAt: linked.linkedYouthSyncedAt,
+      updatedAt: new Date().toISOString(),
+      sessionStatus: baseSession.sessionStatus || "in_progress"
+    };
+    writeParticipantSessionDraft(linkedSession);
+    try {
+      await saveParticipantSessionRemote(linkedSession);
+    } catch {
+      // Caregiver tab on the same device can still receive the draft via BroadcastChannel.
+    }
+    if (cleanValueText(participantSessionId) === targetSessionId || researcherMode) {
+      setParticipantRole("caregiver");
+      setLinkedYouthParticipantId(linked.linkedYouthParticipantId || "");
+      setLinkedYouthValues(linked.linkedYouthValues);
+      setLinkedYouthSyncedAt(linked.linkedYouthSyncedAt);
+    }
+    setResearcherDraftTick((current) => current + 1);
+    const youthLabel = linked.linkedYouthParticipantId || "Youth";
+    setResearcherStatus(
+      `Linked ${linked.linkedYouthValues.length} Youth value${linked.linkedYouthValues.length === 1 ? "" : "s"} from ${youthLabel} to caregiver ${targetSessionId}.`
+    );
+  }
+
+  function importLinkedYouthValuesFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const payload = JSON.parse(String(reader.result || "{}"));
+        await applyLinkedYouthValuesImport(payload);
+      } catch (error) {
+        setResearcherStatus(error.message || "Could not import Youth session JSON.");
+      }
+    };
+    reader.onerror = () => setResearcherStatus("Could not read Youth session JSON file.");
+    reader.readAsText(file);
   }
 
   if (researcherMode) {
@@ -4086,9 +4292,13 @@ export default function App() {
           </div>
           {loadedDraft ? (
             <p className="researcher-draft-summary">
-              {researcherSessionLookup}: Phase {loadedDraft.phase || 1}
+              {researcherSessionLookup}: {loadedDraft.role === "caregiver" ? "Caregiver" : "Youth"} · Phase{" "}
+              {loadedDraft.phase || 1}
               {loadedDraft.phase === 2 ? ` · ${loadedDraft.phaseTwo?.currentScreen || "tools"}` : ` · ${loadedDraft.phaseOne?.currentScreen || "questions"}`}
               {loadedDraft.participantFinished ? " · participant finished" : ""}
+              {loadedDraft.role === "caregiver" && loadedDraft.linkedYouthParticipantId
+                ? ` · linked Youth ${loadedDraft.linkedYouthParticipantId} (${(loadedDraft.linkedYouthValues || []).length} values)`
+                : ""}
             </p>
           ) : (
             <p className="researcher-draft-summary">
@@ -4096,6 +4306,47 @@ export default function App() {
               with the same participant ID.
             </p>
           )}
+        </section>
+
+        <section className="researcher-card researcher-workflow-card">
+          <h2>Caregiver — Link Youth values</h2>
+          <p className="researcher-subtitle">
+            Load the caregiver Participant ID above, then upload the Youth Phase 1 or Phase 2 log JSON downloaded
+            earlier. This copies <code>phase2.selectedValues</code> into the caregiver session for Phase 2.
+          </p>
+          <div className="researcher-workflow-step">
+            <div className="researcher-step-label">Upload Youth session JSON</div>
+            <p>
+              Use the file from Youth day (Phase 1 or Phase 2 download). The caregiver&apos;s own values are not
+              overwritten.
+            </p>
+            <label className="researcher-file-drop">
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => {
+                  importLinkedYouthValuesFile(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+              Upload Youth JSON file
+            </label>
+            {loadedDraft?.role === "caregiver" && (loadedDraft.linkedYouthValues || []).length > 0 ? (
+              <div className="researcher-value-list">
+                <p className="researcher-draft-summary">
+                  Linked from {loadedDraft.linkedYouthParticipantId || "Youth"}
+                  {loadedDraft.linkedYouthSyncedAt
+                    ? ` · ${new Date(loadedDraft.linkedYouthSyncedAt).toLocaleString()}`
+                    : ""}
+                </p>
+                {loadedDraft.linkedYouthValues.map((value) => (
+                  <div className="researcher-value-chip" key={value}>
+                    <strong>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </section>
 
         <section className="researcher-card researcher-workflow-card">
@@ -4296,9 +4547,30 @@ export default function App() {
           <div>
             <h1 className="participant-id-title">Before we start</h1>
             <p className="participant-id-subtitle">
-              Enter the participant ID and password assigned by the researcher.
+              Choose who is using the tool, then enter the participant ID and password assigned by the researcher.
             </p>
           </div>
+          <fieldset className="participant-role-fieldset">
+            <legend className="participant-id-label">I am a</legend>
+            <div className="participant-role-toggle" role="group" aria-label="Participant role">
+              <button
+                type="button"
+                className={`participant-role-option ${participantRole === "youth" ? "is-selected" : ""}`}
+                aria-pressed={participantRole === "youth"}
+                onClick={() => setParticipantRole("youth")}
+              >
+                Youth
+              </button>
+              <button
+                type="button"
+                className={`participant-role-option ${participantRole === "caregiver" ? "is-selected" : ""}`}
+                aria-pressed={participantRole === "caregiver"}
+                onClick={() => setParticipantRole("caregiver")}
+              >
+                Caregiver
+              </button>
+            </div>
+          </fieldset>
           <label className="participant-id-label">
             Participant ID
             <input
@@ -4325,6 +4597,12 @@ export default function App() {
               }}
             />
           </label>
+          {participantRole === "caregiver" ? (
+            <p className="participant-id-subtitle">
+              After you start, the researcher can upload the Youth session JSON to show that Youth&apos;s values in
+              Phase 2.
+            </p>
+          ) : null}
           {participantPasswordError ? (
             <p className="participant-id-error" role="alert">
               {participantPasswordError}
@@ -4356,6 +4634,15 @@ export default function App() {
       <div className="participant-sync-bar">
         <span>
           ID: <strong>{participantSessionId}</strong>
+          {" · "}
+          Role: <strong>{participantRole === "caregiver" ? "Caregiver" : "Youth"}</strong>
+          {participantRole === "caregiver" && linkedYouthParticipantId ? (
+            <>
+              {" · "}
+              Youth: <strong>{linkedYouthParticipantId}</strong>
+              {linkedYouthValues.length ? ` (${linkedYouthValues.length} values)` : ""}
+            </>
+          ) : null}
         </span>
         {participantSyncStatus ? <span className="participant-sync-status">{participantSyncStatus}</span> : null}
       </div>
@@ -5119,6 +5406,18 @@ export default function App() {
       >
         {phaseTwoScreen === "tools" ? (
           <div className="screen active">
+            {caregiverMissingYouthLink ? (
+              <p className="participant-id-error" role="status">
+                Youth values are not linked yet. Ask the researcher to upload the Youth session JSON on the
+                researcher dashboard (caregiver ID: {participantSessionId}).
+              </p>
+            ) : participantRole === "caregiver" && linkedYouthValues.length > 0 ? (
+              <p className="section-sub">
+                Youth values linked
+                {linkedYouthParticipantId ? ` from ${linkedYouthParticipantId}` : ""}:{" "}
+                {linkedYouthValues.join(", ")}.
+              </p>
+            ) : null}
             <div className="tool-entry-grid">
               <button className="tool-entry-card active-tool" type="button" onClick={startToolAVennDiagram}>
                 <span>Tool A</span>
@@ -5141,7 +5440,11 @@ export default function App() {
                 ← Back to tools
               </button>
             </div>
-            <ToolAVennDiagram youthValues={phase2YouthValueItems} />
+            <ToolAVennDiagram
+              youthValues={phase2YouthValueItems}
+              caregiverValues={phase2CaregiverValueItems}
+              defaultPerspective={participantRole}
+            />
           </div>
         ) : phaseTwoScreen === "tool-b" ? (
           <div className="screen active phase2-embedded-tool phase2-embedded-tool--wide">
@@ -5150,7 +5453,11 @@ export default function App() {
                 ← Back to tools
               </button>
             </div>
-            <ToolBPuzzle embedded youthValues={phase2YouthValueItems} />
+            <ToolBPuzzle
+              embedded
+              youthValues={phase2YouthValueItems}
+              caregiverValues={phase2CaregiverValueItems}
+            />
           </div>
         ) : phaseTwoScreen === "shapes" ? (
           <div className="screen active">

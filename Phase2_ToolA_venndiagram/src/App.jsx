@@ -17,13 +17,13 @@ const STAKEHOLDER_TABS = { youth: 2, caregiver: 3, clinician: 4 }
 
 const DELETED_IDS_KEY = 'kidscolab.deletedValueIds.v1'
 
-function normalizeYouthValues(youthValues = []) {
-  return youthValues
+function normalizeStakeholderValues(values = [], idPrefix = "phase2-value") {
+  return values
     .map((value, index) => {
       const label = String(value.label || value.text || '').trim()
       if (!label) return null
       return {
-        id: value.id || `phase2-youth-${index}`,
+        id: value.id || `${idPrefix}-${index}`,
         emoji: value.emoji || '⭐',
         label,
         description: value.description || label,
@@ -44,12 +44,27 @@ function loadDeletedIds() {
   }
 }
 
-export default function App({ youthValues = [] }) {
+export default function App({
+  youthValues = [],
+  caregiverValues = [],
+  defaultPerspective = 'youth',
+}) {
   const [activeTab, setActiveTab]           = useState(0)
-  const [perspective, setPerspective]       = useState('youth')
+  const [perspective, setPerspective]       = useState(defaultPerspective)
   const [selectedRegion, setSelectedRegion] = useState(null)
   const [deletedIds, setDeletedIds]         = useState(loadDeletedIds)
-  const selectedYouthValues = useMemo(() => normalizeYouthValues(youthValues), [youthValues])
+  const selectedYouthValues = useMemo(
+    () => normalizeStakeholderValues(youthValues, 'phase2-youth'),
+    [youthValues]
+  )
+  const selectedCaregiverValues = useMemo(
+    () => normalizeStakeholderValues(caregiverValues, 'phase2-caregiver'),
+    [caregiverValues]
+  )
+
+  useEffect(() => {
+    setPerspective(defaultPerspective)
+  }, [defaultPerspective])
 
   // Persist deletedIds to localStorage whenever they change
   useEffect(() => {
@@ -114,6 +129,7 @@ export default function App({ youthValues = [] }) {
               deletedIds={deletedIds}
               onRestoreAll={handleRestoreAll}
               youthValues={selectedYouthValues}
+              caregiverValues={selectedCaregiverValues}
             />
           )}
           {activeTab === 1 && (
@@ -143,6 +159,7 @@ export default function App({ youthValues = [] }) {
               deletedIds={deletedIds}
               onDeleteValue={handleDeleteValue}
               onRestoreAll={handleRestoreAll}
+              caregiverValues={selectedCaregiverValues}
             />
           )}
           {activeTab === 4 && (

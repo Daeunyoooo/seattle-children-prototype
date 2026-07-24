@@ -173,6 +173,29 @@ function normalizeYouthValues(youthValues){
     })
     .filter(Boolean)
 }
+
+function normalizeCaregiverValues(caregiverValues){
+  if (!Array.isArray(caregiverValues) || caregiverValues.length === 0) return null
+  return caregiverValues
+    .map((value,index)=>{
+      const label=String(value.label||value.text||'').trim()
+      if(!label) return null
+      return {
+        id:value.id||`phase2-caregiver-${index}`,
+        label,
+        shortLabel:label.length>18?`${label.slice(0,16)}...`:label,
+        stakeholder:'Caregiver',
+        description:value.description||label,
+        color:['#f7c5d5','#f8c0b0','#f8d0b8','#fac894','#d0b8f0'][index%5],
+        angle:(30+index*35)%360,
+        timeline:'From Phase 1',
+        targetDate:'Caregiver value',
+        smartDetails:label,
+        category:'Caregiver Values',
+      }
+    })
+    .filter(Boolean)
+}
 const normalizeValueLabel=label=>String(label||'').trim().replace(/\s+/g,' ').toLowerCase()
 function mergeStakeholderLabels(...labels){
   const priority=['Clinician','Caregiver','Patient','Team','Everyone']
@@ -213,7 +236,7 @@ function mergeDuplicateValueWheels(wheels){
   return merged
 }
 
-function buildWheelLabels(youthValues){
+function buildWheelLabels(youthValues, caregiverValues){
   const defaults = [
     {id:'me-care',label:'Life Participation',shortLabel:'Life Participation',stakeholder:'Caregiver',description:'Being able to do the things you love — school, friends, activities, and everything that makes life meaningful.',color:'#f7c5d5',angle:0,timeline:'3 months',targetDate:'By August 2025',smartDetails:'Identify 3 activities the child can participate in weekly despite treatment schedule',category:'Life'},
     {id:'me',label:'Play soccer & travel',shortLabel:'Soccer & Travel',stakeholder:'Patient',description:'I want to be able to play sports and go on trips without being tied to a machine or feeling exhausted.',color:'#f4a8b8',angle:30,timeline:'6 months',targetDate:'By November 2025',smartDetails:'Increase energy levels to participate in sports 2x per week and take 1 trip',category:'Hobbies'},
@@ -229,8 +252,18 @@ function buildWheelLabels(youthValues){
     {id:'medication',label:'Kidney Health',shortLabel:'Kidney Health',stakeholder:'Clinician & Caregiver',description:'Keeping your kidneys as healthy as they can be through careful monitoring and treatment.',color:'#b0d8f4',angle:330,timeline:'Ongoing',targetDate:'Monthly reviews',smartDetails:'Maintain kidney function markers within target range with monthly labs',category:'My Health'},
   ]
   const selectedYouthValues=normalizeYouthValues(youthValues)
-  if (!selectedYouthValues) return mergeDuplicateValueWheels(defaults)
-  return mergeDuplicateValueWheels([...selectedYouthValues, ...TOOL_C_STAKEHOLDER_WHEELS])
+  const selectedCaregiverValues=normalizeCaregiverValues(caregiverValues)
+  if (!selectedYouthValues && !selectedCaregiverValues) return mergeDuplicateValueWheels(defaults)
+
+  let stakeholderWheels = TOOL_C_STAKEHOLDER_WHEELS
+  if (selectedCaregiverValues) {
+    stakeholderWheels = TOOL_C_STAKEHOLDER_WHEELS.filter((wheel) => wheel.stakeholder !== 'Caregiver')
+  }
+  return mergeDuplicateValueWheels([
+    ...(selectedYouthValues || []),
+    ...(selectedCaregiverValues || []),
+    ...stakeholderWheels,
+  ])
 }
 
 /* STAKEHOLDER FILTERS */
@@ -424,7 +457,7 @@ function RightPanel({selectedFilters,onToggleFilter,hoveredWheel}){
 
 /* APP */
 
-export default function App({ embedded = false, youthValues }){
+export default function App({ embedded = false, youthValues, caregiverValues }){
   const [sidebarOpen,setSidebarOpen]=usePersistedState(LS.sidebarOpen,true)
   const [goal,setGoal]=usePersistedState(LS.goal,SHARED_GOAL)
   const [selectedFilters,setSelectedFilters]=usePersistedState(LS.selectedFilters,[])
@@ -441,7 +474,10 @@ export default function App({ embedded = false, youthValues }){
   const [modal,setModal]=useState(null)
   const [resetKey,setResetKey]=useState(0)
 
-  const wheels=useMemo(()=>mergeDuplicateValueWheels(buildWheelLabels(youthValues)),[youthValues])
+  const wheels=useMemo(
+    ()=>mergeDuplicateValueWheels(buildWheelLabels(youthValues, caregiverValues)),
+    [youthValues, caregiverValues]
+  )
   const hoveredWheel=wheels.find(w=>w.id===hovered)??null
 
   const puzzleFillSrc=useMemo(()=>{

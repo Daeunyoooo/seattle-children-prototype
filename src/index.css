@@ -118,6 +118,36 @@ button:disabled {
   line-height: 1.5;
 }
 
+.participant-role-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.participant-role-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.participant-role-option {
+  padding: 10px 12px;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  background: #ffffff;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.participant-role-option.is-selected {
+  border-color: var(--color-text-primary);
+  background: #f3f4f6;
+}
+
 .participant-id-label {
   display: flex;
   flex: 1;

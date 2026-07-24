@@ -106,22 +106,54 @@ function makeYouthDots(youthValues = []) {
   }))
 }
 
-function makeDotsForYouthValues(youthValues = []) {
-  const nonYouthDots = INITIAL_DOTS.filter(dot => {
-    const ids = dot.valueIds || [dot.id]
-    return dot.region !== 'youth' && !ids.some(id => String(id).startsWith('y'))
-  })
-  return [...makeYouthDots(youthValues), ...nonYouthDots]
+function makeCaregiverDots(caregiverValues = []) {
+  return caregiverValues.map((value, index) => ({
+    id: value.id || `phase2-caregiver-${index}`,
+    x: 340 + (index % 2) * 44,
+    y: 112 + Math.floor(index / 2) * 34,
+    short: value.label,
+    region: 'caregiver',
+  }))
 }
 
-function makeValueInfoForYouthValues(youthValues = []) {
+function isYouthValueId(id) {
+  return String(id).startsWith('y')
+}
+
+function isPredefinedCaregiverValueId(id) {
+  return /^c\d/.test(String(id))
+}
+
+function makeDotsForOverrides(youthValues = [], caregiverValues = []) {
+  const hasCaregiverOverride = caregiverValues.length > 0
+  const nonOverriddenDots = INITIAL_DOTS.filter(dot => {
+    const ids = dot.valueIds || [dot.id]
+    if (dot.region === 'youth' || ids.some(isYouthValueId)) return false
+    if (hasCaregiverOverride && (dot.region === 'caregiver' || ids.some(isPredefinedCaregiverValueId))) {
+      return false
+    }
+    return true
+  })
+  return [
+    ...makeYouthDots(youthValues),
+    ...(hasCaregiverOverride ? makeCaregiverDots(caregiverValues) : []),
+    ...nonOverriddenDots,
+  ]
+}
+
+function makeValueInfoForOverrides(youthValues = [], caregiverValues = []) {
   const info = { ...VALUE_INFO }
   Object.keys(info).forEach(id => {
-    if (String(id).startsWith('y')) delete info[id]
+    if (isYouthValueId(id)) delete info[id]
+    if (caregiverValues.length > 0 && isPredefinedCaregiverValueId(id)) delete info[id]
   })
   youthValues.forEach((value, index) => {
     const id = value.id || `phase2-youth-${index}`
     info[id] = { stakeholder: 'youth', label: value.label }
+  })
+  caregiverValues.forEach((value, index) => {
+    const id = value.id || `phase2-caregiver-${index}`
+    info[id] = { stakeholder: 'caregiver', label: value.label }
   })
   return info
 }
@@ -214,9 +246,21 @@ function getLabelProps(dot) {
   return                   { anchor: 'middle', tx: dot.x,      ty: dot.y - 9   }
 }
 
-export default function VennDiagramPanel({ onRegionClick, deletedIds = [], onRestoreAll = () => {}, youthValues = [] }) {
-  const initialDots = useMemo(() => makeDotsForYouthValues(youthValues), [youthValues])
-  const valueInfo = useMemo(() => makeValueInfoForYouthValues(youthValues), [youthValues])
+export default function VennDiagramPanel({
+  onRegionClick,
+  deletedIds = [],
+  onRestoreAll = () => {},
+  youthValues = [],
+  caregiverValues = [],
+}) {
+  const initialDots = useMemo(
+    () => makeDotsForOverrides(youthValues, caregiverValues),
+    [youthValues, caregiverValues]
+  )
+  const valueInfo = useMemo(
+    () => makeValueInfoForOverrides(youthValues, caregiverValues),
+    [youthValues, caregiverValues]
+  )
   const [hoveredRegion, setHoveredRegion] = useState(null)
   const [dots, setDots]                   = useState(initialDots)
   const [draggingDot, setDraggingDot]     = useState(null) // { id, offsetX, offsetY }
@@ -230,13 +274,13 @@ export default function VennDiagramPanel({ onRegionClick, deletedIds = [], onRes
 
   // Persist dots to localStorage whenever they change
   useEffect(() => {
-    if (youthValues.length > 0) return
+    if (youthValues.length > 0 || caregiverValues.length > 0) return
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(dots))
     } catch {
       // ignore quota / privacy mode errors — in-memory state still works
     }
-  }, [dots, youthValues.length])
+  }, [dots, youthValues.length, caregiverValues.length])
 
   function getSvgCoords(e) {
     const svg  = svgRef.current

@@ -23,10 +23,16 @@ export default function StakeholderValuesPanel({
   onDeleteValue = () => {},
   onRestoreAll = () => {},
   youthValues = [],
+  caregiverValues = [],
 }) {
   const { label, color, light, mid } = CONFIG[stakeholder]
   const defaultData = STAKEHOLDER_DATA[stakeholder]
-  const vals = stakeholder === 'youth' ? youthValues : defaultData.values
+  const vals =
+    stakeholder === 'youth'
+      ? youthValues
+      : stakeholder === 'caregiver' && caregiverValues.length > 0
+        ? caregiverValues
+        : defaultData.values
   const goal = defaultData.goal
   const isMe = stakeholder === perspective
 
