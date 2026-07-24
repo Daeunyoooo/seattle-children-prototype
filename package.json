@@ -8,7 +8,7 @@
     "api": "node server.js",
     "dev:all": "node server.js & vite",
     "build": "vite build",
-    "build:github": "vite build --outDir docs --emptyOutDir && cp docs/index.html docs/404.html",
+    "build:github": "vite build --outDir docs --emptyOutDir && cp docs/index.html docs/404.html && touch docs/.nojekyll",
     "build:connect": "vite build",
     "connect:dev": "uvicorn connect.app:app --host 0.0.0.0 --port 8080",
     "preview": "vite preview"
