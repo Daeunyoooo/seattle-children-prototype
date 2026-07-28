@@ -1,13 +1,15 @@
 # GitHub Pages Deployment
 
-This app is deployed as a static Vite site. Participant data is not sent to GitHub Pages, Vercel, Supabase, or any app server.
+This app is deployed as a static Vite site. Participant data is not sent to GitHub Pages or any app server.
+
+For cross-device save/load on Vercel + Supabase, see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## Data Handling
 
 - Participant drafts are kept in the browser's local storage during the session.
 - Researcher exports download JSON files directly to the researcher's computer.
 - Tool C PNG data is embedded in the downloaded Phase 2 JSON.
-- Do not configure Supabase or a hosted API for the public deployment.
+- Do not configure Supabase for the GitHub Pages deployment (localStorage only). Use Vercel + Supabase for cross-device storage — see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## Publish Steps
 

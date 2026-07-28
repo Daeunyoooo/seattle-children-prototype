@@ -3,7 +3,8 @@ import ValueEmojiPicker from "./ValueEmojiPicker.jsx";
 import {
   saveParticipantSessionRemote,
   loadParticipantSessionRemote,
-  getStorageBackendLabel
+  getStorageBackendLabel,
+  isRemoteStorageConfigured
 } from "./lib/sessionStorage.js";
 import {
   PARTICIPANT_EXPORT_SCHEMA_V2,
@@ -1986,7 +1987,11 @@ export default function App() {
         });
         setParticipantSyncStatus("");
       } catch {
-        setParticipantSyncStatus("Could not save this draft in the browser. Ask the researcher for help.");
+        setParticipantSyncStatus(
+          isRemoteStorageConfigured()
+            ? "Could not sync this draft to Supabase. Check your connection or ask the researcher for help."
+            : "Could not save this draft in the browser. Ask the researcher for help."
+        );
       }
     }, 2000);
 
@@ -2772,7 +2777,11 @@ export default function App() {
       writeParticipantSessionDraft(savedDraft);
       await saveParticipantSessionRemote(savedDraft, { checkpoint: "phase2" });
       setParticipantFinished(true);
-      setSessionSaveStatus("All done! The researcher can download the JSON log and embedded PNG data from this browser.");
+      setSessionSaveStatus(
+        isRemoteStorageConfigured()
+          ? "All done! The researcher can load this participant ID from any device and download the JSON log."
+          : "All done! The researcher can download the JSON log and embedded PNG data from this browser."
+      );
     } catch (error) {
       setSessionSaveStatus(`Could not save session: ${error.message}`);
     }
@@ -2996,7 +3005,9 @@ export default function App() {
     const session = await resolveParticipantDraft(cleanSessionId);
     if (!session) {
       setResearcherStatus(
-        `No local draft found for ${cleanSessionId}. Use the same browser profile and participant ID.`
+        isRemoteStorageConfigured()
+          ? `No saved session found for ${cleanSessionId} in Supabase. Confirm the participant ID and that the participant saved.`
+          : `No local draft found for ${cleanSessionId}. Use the same browser profile and participant ID.`
       );
       return;
     }
@@ -3005,7 +3016,11 @@ export default function App() {
     });
     setResearcherFocusRole(normalizeParticipantRole(session.role) === "caregiver" ? "caregiver" : "youth");
     setResearcherDraftTick((current) => current + 1);
-    setResearcherStatus(`Loaded local draft for ${cleanSessionId}. Storage: ${getStorageBackendLabel()}.`);
+    setResearcherStatus(
+      isRemoteStorageConfigured()
+        ? `Loaded from Supabase for ${cleanSessionId}. Storage: ${getStorageBackendLabel()}.`
+        : `Loaded local draft for ${cleanSessionId}. Storage: ${getStorageBackendLabel()}.`
+    );
   }
 
   async function exportParticipantResponses() {
@@ -3018,7 +3033,9 @@ export default function App() {
       const draftSession = await resolveParticipantDraft(cleanSessionId);
       if (!draftSession) {
         setResearcherStatus(
-          `No local draft found for ${cleanSessionId}. The participant must use this browser/profile.`
+          isRemoteStorageConfigured()
+            ? `No saved session found for ${cleanSessionId} in Supabase.`
+            : `No local draft found for ${cleanSessionId}. The participant must use this browser/profile.`
         );
         return;
       }
@@ -3042,7 +3059,7 @@ export default function App() {
     } catch (error) {
       setResearcherStatus(
         error.message ||
-          `Could not load the local draft. Storage: ${getStorageBackendLabel()}.`
+          `Could not load the session. Storage: ${getStorageBackendLabel()}.`
       );
     }
   }
@@ -4435,8 +4452,9 @@ export default function App() {
             </p>
           ) : (
             <p className="researcher-draft-summary">
-              No local draft for {researcherSessionLookup || "this ID"}. The participant must use this browser/profile,
-              with the same participant ID.
+              {isRemoteStorageConfigured()
+                ? `No saved session for ${researcherSessionLookup || "this ID"} in Supabase yet. Enter the participant ID and click Load draft.`
+                : `No local draft for ${researcherSessionLookup || "this ID"}. The participant must use this browser/profile, with the same participant ID.`}
             </p>
           )}
         </section>
@@ -4632,7 +4650,7 @@ export default function App() {
                 <div className="log-data-images">
                   <div className="log-data-title">Tool C images (PNG)</div>
                   <p className="log-data-desc">
-                    Previewed from the local draft. These images download as embedded PNG data in the Phase 2 JSON.
+                    Previewed from the loaded session. These images download as embedded PNG data in the Phase 2 JSON.
                   </p>
                   <div className="log-data-image-grid">
                     {(loadedDraft.phaseTwo.toolC.perValueDrawings || []).map((drawing, index) => {
