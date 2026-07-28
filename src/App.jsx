@@ -2276,7 +2276,9 @@ export default function App() {
     const initial = seeded.slice(0, VERSION_B_VALUE_SLOTS);
     setValues(initial.filter((text) => text.trim()));
     setValueIcons([]);
-    setVersionBBoardItems(ensureQuestionPhotosOnVersionBBoard([], versionBPhotos));
+    // Keep the board empty until the researcher imports AI values.
+    // Question photos are added then (not here), so we show "AI is generating..." instead of an image-only canvas.
+    setVersionBBoardItems([]);
     setVersionBSelectedBoardItemId(null);
     setPhaseOneScreen("values");
     window.setTimeout(() => {
@@ -2879,14 +2881,22 @@ export default function App() {
     const restoredQuestionPhotos = VERSION_B_QUESTIONS.map((_, index) =>
       restorePhotoFromMetadata(session.toolB?.questions?.[index]?.photo)
     );
-    const restoredBoardItems =
+    const rawRestoredBoardItems =
       session.toolB?.boardItems?.length > 0
         ? session.toolB.boardItems.map((item) =>
             item.type === "image"
               ? { ...item, photo: restorePhotoFromMetadata(item.photo) }
               : item
           )
-        : createVersionBBoardItemsFromValues(restoredBValues);
+        : [];
+    const boardHasIdentifiedText = rawRestoredBoardItems.some(
+      (item) => item.type === "text" && item.text?.trim()
+    );
+    // Prefer board text when present; otherwise rebuild from identified values.
+    // Image-only boards (question photos before AI import) must not skip the waiting state.
+    const restoredBoardItems = boardHasIdentifiedText
+      ? rawRestoredBoardItems
+      : createVersionBBoardItemsFromValues(restoredBValues);
     const sessionId = cleanValueText(session.sessionId || researcherSessionLookup || participantSessionId);
     setParticipantSessionId(sessionId);
     setResearcherSessionLookup(sessionId);
@@ -5219,9 +5229,7 @@ export default function App() {
                 <div className="section-title">
                   1. Based on the story you shared today, these are the values we identified.
                 </div>
-                {versionBBoardItems.some(
-                  (item) => (item.type === "text" && item.text?.trim()) || (item.type === "image" && item.photo?.url)
-                ) ? (
+                {versionBBoardItems.some((item) => item.type === "text" && item.text?.trim()) ? (
                   <>
                     <div className="section-sub">
                       Drag images and value text anywhere on the canvas. Tap the image library below to add photos.
