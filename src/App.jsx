@@ -3374,7 +3374,8 @@ export default function App() {
     canvasRefAssign,
     onDrawStart,
     onDrawMove,
-    onDrawEnd
+    onDrawEnd,
+    canvasAction = null
   }) {
     return (
       <div className="draw-card version-b-draw-card">
@@ -3469,18 +3470,21 @@ export default function App() {
           </div>
         </div>
 
-        <canvas
-          className="draw-cv"
-          height="200"
-          ref={canvasRefAssign}
-          onMouseDown={(event) => onDrawStart(event, false)}
-          onMouseMove={(event) => onDrawMove(event, false)}
-          onMouseUp={(event) => onDrawEnd(event, false)}
-          onMouseLeave={(event) => onDrawEnd(event, false)}
-          onTouchStart={(event) => onDrawStart(event, true)}
-          onTouchMove={(event) => onDrawMove(event, true)}
-          onTouchEnd={(event) => onDrawEnd(event, true)}
-        />
+        <div className={canvasAction ? "version-b-draw-canvas-wrap" : undefined}>
+          <canvas
+            className="draw-cv"
+            height="200"
+            ref={canvasRefAssign}
+            onMouseDown={(event) => onDrawStart(event, false)}
+            onMouseMove={(event) => onDrawMove(event, false)}
+            onMouseUp={(event) => onDrawEnd(event, false)}
+            onMouseLeave={(event) => onDrawEnd(event, false)}
+            onTouchStart={(event) => onDrawStart(event, true)}
+            onTouchMove={(event) => onDrawMove(event, true)}
+            onTouchEnd={(event) => onDrawEnd(event, true)}
+          />
+          {canvasAction}
+        </div>
       </div>
     );
   }
@@ -5178,15 +5182,17 @@ export default function App() {
                             drawStartsRef: versionBDrawStartsRef,
                             drawInteractRef: versionBDrawInteractRef,
                             snapshotOnEnd: false
-                          })
+                          }),
+                        canvasAction: (
+                          <button
+                            type="button"
+                            className="version-b-save-drawing"
+                            onClick={() => saveVersionBDrawingFromCanvas(versionBQuestionIndex)}
+                          >
+                            Use this Drawing
+                          </button>
+                        )
                       })}
-                      <button
-                        type="button"
-                        className="primary version-b-save-drawing"
-                        onClick={() => saveVersionBDrawingFromCanvas(versionBQuestionIndex)}
-                      >
-                        Use this drawing
-                      </button>
                     </div>
                   ) : null}
 

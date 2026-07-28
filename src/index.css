@@ -1232,14 +1232,38 @@ textarea:focus {
   display: none;
 }
 
-.version-b-upload-button,
-.version-b-save-drawing {
+.version-b-upload-button {
   width: 100%;
   max-width: 320px;
 }
 
+.version-b-draw-canvas-wrap {
+  position: relative;
+}
+
 .version-b-save-drawing {
-  margin-top: 12px;
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  width: auto;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid #111111;
+  border-radius: var(--border-radius-md);
+  background: #111111;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.version-b-save-drawing:hover {
+  background: #000000;
+  border-color: #000000;
+  color: #ffffff;
 }
 
 .version-b-draw-card {
