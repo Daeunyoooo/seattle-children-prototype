@@ -426,6 +426,7 @@ function photoMetadata(photo) {
   };
   if (photo.dataUrl) meta.dataUrl = photo.dataUrl;
   if (photo.storageUrl) meta.storageUrl = photo.storageUrl;
+  // Keep non-blob URLs (library assets). Blob URLs are only useful with a paired dataUrl.
   if (photo.url && !photo.url.startsWith("blob:")) meta.url = photo.url;
   return meta;
 }
@@ -2328,15 +2329,23 @@ export default function App() {
     }, 0);
   }
 
+  function boardPhotoFromLibraryItem(libraryItem) {
+    return {
+      name: libraryItem.name || "",
+      url: libraryItem.url,
+      dataUrl: libraryItem.dataUrl,
+      storageUrl: libraryItem.storageUrl,
+      source: libraryItem.source || (libraryItem.isUpload ? "upload" : "library"),
+      isUpload: Boolean(libraryItem.isUpload)
+    };
+  }
+
   function addImageToVersionBBoard(libraryItem) {
+    const photo = boardPhotoFromLibraryItem(libraryItem);
     const selected = versionBBoardItems.find((item) => item.id === versionBSelectedBoardItemId);
     if (selected?.type === "image") {
       setVersionBBoardItems((current) =>
-        current.map((item) =>
-          item.id === selected.id
-            ? { ...item, photo: { name: libraryItem.name, url: libraryItem.url } }
-            : item
-        )
+        current.map((item) => (item.id === selected.id ? { ...item, photo } : item))
       );
       return;
     }
@@ -2351,7 +2360,7 @@ export default function App() {
           type: "image",
           x: position.x,
           y: position.y,
-          photo: { name: libraryItem.name, url: libraryItem.url }
+          photo
         }
       ];
     });
@@ -2360,15 +2369,34 @@ export default function App() {
 
   function addToVersionBValuesLibrary(file) {
     if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
+    const itemId = `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const item = {
-      id: `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      id: itemId,
       name: file.name,
-      url: URL.createObjectURL(file),
+      url: objectUrl,
       source: "upload",
       isUpload: true
     };
     setVersionBValuesLibrary((current) => [...current, item]);
     addImageToVersionBBoard(item);
+    // Persist a data URL so values-board uploads survive sync/export (blob URLs alone are dropped).
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      if (!dataUrl) return;
+      setVersionBValuesLibrary((current) =>
+        current.map((entry) => (entry.id === itemId ? { ...entry, dataUrl } : entry))
+      );
+      setVersionBBoardItems((current) =>
+        current.map((boardItem) =>
+          boardItem.type === "image" && boardItem.photo?.url === objectUrl
+            ? { ...boardItem, photo: { ...boardItem.photo, dataUrl, isUpload: true, source: "upload" } }
+            : boardItem
+        )
+      );
+    };
+    reader.readAsDataURL(file);
   }
 
   function selectVersionBValuesLibraryImage(libraryItem) {
@@ -4928,12 +4956,15 @@ export default function App() {
                 </div>
               </div>
 
-              {(loadedDraft.toolB?.questions || []).some((question) => getPhase1ToolBPhotoSrc(question?.photo)) ? (
+              {(loadedDraft.toolB?.questions || []).some((question) => getPhase1ToolBPhotoSrc(question?.photo)) ||
+              (loadedDraft.toolB?.boardItems || []).some(
+                (item) => item?.type === "image" && getPhase1ToolBPhotoSrc(item?.photo)
+              ) ? (
                 <div className="log-data-images">
                   <div className="log-data-title">Tool B photos / drawings (Phase 1)</div>
                   <p className="log-data-desc">
-                    Question photos and canvas drawings from Tool B. Stored as PNG in Supabase Storage when remote
-                    save is enabled.
+                    Question photos/drawings and images added on the values board. Stored as PNG in Supabase Storage
+                    when remote save is enabled.
                   </p>
                   <div className="log-data-image-grid">
                     {(loadedDraft.toolB.questions || []).map((question, index) => {
@@ -4945,6 +4976,20 @@ export default function App() {
                           <figcaption>
                             Q{question?.num || index + 1}
                             {question?.photo?.name ? ` · ${question.photo.name}` : ""}
+                          </figcaption>
+                        </figure>
+                      );
+                    })}
+                    {(loadedDraft.toolB.boardItems || []).map((item, index) => {
+                      if (item?.type !== "image") return null;
+                      const src = getPhase1ToolBPhotoSrc(item?.photo);
+                      if (!src) return null;
+                      return (
+                        <figure className="log-data-image-card" key={`tool-b-board-${item.id || index}`}>
+                          <img src={src} alt={item?.photo?.name || `Values board image ${index + 1}`} />
+                          <figcaption>
+                            Values board
+                            {item?.photo?.name ? ` · ${item.photo.name}` : ""}
                           </figcaption>
                         </figure>
                       );

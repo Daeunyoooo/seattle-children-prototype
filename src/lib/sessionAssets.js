@@ -1,4 +1,4 @@
-import { dataUrlToBase64Payload, slugifyValueName } from "./toolCLogData.js";
+import { blobToDataUrl, dataUrlToBase64Payload, slugifyValueName } from "./toolCLogData.js";
 import { isRemoteStorageConfigured, uploadSessionAsset } from "./sessionStorage.js";
 
 function isDataUrl(value) {
@@ -7,6 +7,19 @@ function isDataUrl(value) {
 
 function cloneSession(session) {
   return JSON.parse(JSON.stringify(session));
+}
+
+async function fetchUrlAsDataUrl(url) {
+  if (!url || typeof url !== "string" || url.startsWith("blob:")) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    if (!blob?.type?.startsWith("image/") && blob.size === 0) return null;
+    return blobToDataUrl(blob);
+  } catch {
+    return null;
+  }
 }
 
 async function offloadDataUrl(sessionId, relativePath, dataUrl) {
@@ -22,26 +35,30 @@ async function offloadDataUrl(sessionId, relativePath, dataUrl) {
 async function offloadPhoto(sessionId, relativePath, photo) {
   if (!photo || typeof photo !== "object") return photo;
   if (photo.storageUrl && !isDataUrl(photo.dataUrl)) {
-    const { dataUrl, ...rest } = photo;
+    const { dataUrl, url, ...rest } = photo;
     void dataUrl;
+    void url;
     return rest;
   }
-  const sourceDataUrl = isDataUrl(photo.dataUrl)
+  let sourceDataUrl = isDataUrl(photo.dataUrl)
     ? photo.dataUrl
     : isDataUrl(photo.url)
       ? photo.url
       : "";
+  // Values-board library / uploaded images may only have a normal URL (or blob already serialized upstream).
+  if (!sourceDataUrl && photo.url && !photo.url.startsWith("blob:")) {
+    sourceDataUrl = await fetchUrlAsDataUrl(photo.url);
+  }
   if (!sourceDataUrl) return photo;
 
   const storageUrl = await offloadDataUrl(sessionId, relativePath, sourceDataUrl);
   if (!storageUrl) return photo;
 
-  const next = {
+  return {
     name: photo.name || "",
     source: photo.source || (photo.isUpload ? "participant-upload" : "library"),
     storageUrl
   };
-  return next;
 }
 
 async function offloadPngImage(sessionId, relativePath, image) {

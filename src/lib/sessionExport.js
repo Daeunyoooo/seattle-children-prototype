@@ -88,11 +88,12 @@ export async function serializePhotoForExport(photo) {
   if (photo.dataUrl) {
     return { ...base, dataUrl: photo.dataUrl };
   }
-  if (photo.isUpload && photo.url?.startsWith("blob:")) {
+  // Values-board uploads and drawings often keep a blob: URL without isUpload set.
+  if (photo.url?.startsWith("blob:")) {
     const dataUrl = await blobUrlToDataUrl(photo.url);
-    return dataUrl ? { ...base, dataUrl } : base;
+    return dataUrl ? { ...base, dataUrl, source: photo.isUpload ? "participant-upload" : base.source } : base;
   }
-  if (photo.url && !photo.url.startsWith("blob:")) {
+  if (photo.url) {
     return { ...base, url: photo.url };
   }
   return base;
