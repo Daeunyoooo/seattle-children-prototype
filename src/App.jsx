@@ -286,10 +286,12 @@ function extractLinkedPeerValuesFromSessionJson(payload, peerLabel) {
       );
       const drawing = byName || rawDrawings[index] || null;
       const pngDataUrl = drawing?.pngDataUrl || "";
-      if (!pngDataUrl) return null;
+      const storageUrl = drawing?.storageUrl || "";
+      if (!pngDataUrl && !storageUrl) return null;
       return {
         valueName,
-        pngDataUrl,
+        ...(pngDataUrl ? { pngDataUrl } : {}),
+        ...(storageUrl ? { storageUrl } : {}),
         pngWidth: Number(drawing?.pngWidth) || 240,
         pngHeight: Number(drawing?.pngHeight) || 240
       };
@@ -329,16 +331,23 @@ function extractLinkedCaregiverValuesFromSessionJson(payload) {
   };
 }
 
+function getLinkedDrawingSrc(drawing) {
+  if (!drawing) return "";
+  return drawing.pngDataUrl || drawing.storageUrl || "";
+}
+
 function normalizeLinkedDrawings(drawings) {
   if (!Array.isArray(drawings)) return [];
   return drawings
     .map((drawing) => {
       const valueName = cleanValueText(drawing?.valueName);
       const pngDataUrl = drawing?.pngDataUrl || "";
-      if (!valueName || !pngDataUrl) return null;
+      const storageUrl = drawing?.storageUrl || "";
+      if (!valueName || (!pngDataUrl && !storageUrl)) return null;
       return {
         valueName,
-        pngDataUrl,
+        ...(pngDataUrl ? { pngDataUrl } : {}),
+        ...(storageUrl ? { storageUrl } : {}),
         pngWidth: Number(drawing?.pngWidth) || 240,
         pngHeight: Number(drawing?.pngHeight) || 240
       };
@@ -397,6 +406,15 @@ function getToolCPreviewSrc(sessionId, image) {
   void sessionId;
   if (!image) return "";
   if (image.pngDataUrl) return image.pngDataUrl;
+  if (image.storageUrl) return image.storageUrl;
+  return "";
+}
+
+function getPhase1ToolBPhotoSrc(photo) {
+  if (!photo) return "";
+  if (photo.dataUrl) return photo.dataUrl;
+  if (photo.storageUrl) return photo.storageUrl;
+  if (photo.url && !String(photo.url).startsWith("blob:")) return photo.url;
   return "";
 }
 
@@ -1388,7 +1406,7 @@ export default function App() {
             current.every(
               (drawing, index) =>
                 drawing.valueName === nextDrawings[index]?.valueName &&
-                drawing.pngDataUrl === nextDrawings[index]?.pngDataUrl
+                getLinkedDrawingSrc(drawing) === getLinkedDrawingSrc(nextDrawings[index])
             )
           ) {
             return current;
@@ -1431,7 +1449,7 @@ export default function App() {
             current.every(
               (drawing, index) =>
                 drawing.valueName === nextDrawings[index]?.valueName &&
-                drawing.pngDataUrl === nextDrawings[index]?.pngDataUrl
+                getLinkedDrawingSrc(drawing) === getLinkedDrawingSrc(nextDrawings[index])
             )
           ) {
             return current;
@@ -3067,10 +3085,10 @@ export default function App() {
       if (session.phaseTwo.toolC?.perValueDrawings?.length) {
         perValueDrawingImagesRef.current = session.phaseTwo.toolC.perValueDrawings;
       }
-      if (!session.phaseTwo.toolC?.composite?.finalImage?.pngDataUrl) {
+      if (!getToolCPreviewSrc(session.sessionId, session.phaseTwo.toolC?.composite?.finalImage)) {
         compositeStrokesRef.current = session.phaseTwo.toolC?.composite?.overlayStrokes || [];
       }
-      if (!session.phaseTwo.toolC?.stakeholders?.finalImage?.pngDataUrl) {
+      if (!getToolCPreviewSrc(session.sessionId, session.phaseTwo.toolC?.stakeholders?.finalImage)) {
         setComponentTray(session.phaseTwo.toolC?.stakeholders?.componentTray || []);
         setPlacedComponents(session.phaseTwo.toolC?.stakeholders?.placedComponents || []);
         sharedStrokesRef.current = session.phaseTwo.toolC?.stakeholders?.sharedStrokes || [];
@@ -3968,13 +3986,14 @@ export default function App() {
           linkedYouthDrawings.find(
             (drawing) => cleanValueText(drawing.valueName).toLowerCase() === cleanValueText(valueName).toLowerCase()
           ) || linkedYouthDrawings[index] || null;
-        if (linkedDrawing?.pngDataUrl) {
+        const linkedSrc = getLinkedDrawingSrc(linkedDrawing);
+        if (linkedSrc) {
           return {
             id: `youth-linked-${index}`,
             owner: "youth",
             ownerLabel: "Youth values",
             label: valueName,
-            src: linkedDrawing.pngDataUrl,
+            src: linkedSrc,
             w: linkedDrawing.pngWidth || 240,
             h: linkedDrawing.pngHeight || 240
           };
@@ -4018,13 +4037,14 @@ export default function App() {
           linkedCaregiverDrawings.find(
             (drawing) => cleanValueText(drawing.valueName).toLowerCase() === cleanValueText(valueName).toLowerCase()
           ) || linkedCaregiverDrawings[index] || null;
-        if (linkedDrawing?.pngDataUrl) {
+        const linkedSrc = getLinkedDrawingSrc(linkedDrawing);
+        if (linkedSrc) {
           return {
             id: `caregiver-linked-${index}`,
             owner: "caregiver",
             ownerLabel: "Caregiver values",
             label: valueName,
-            src: linkedDrawing.pngDataUrl,
+            src: linkedSrc,
             w: linkedDrawing.pngWidth || 240,
             h: linkedDrawing.pngHeight || 240
           };
@@ -4908,10 +4928,37 @@ export default function App() {
                 </div>
               </div>
 
+              {(loadedDraft.toolB?.questions || []).some((question) => getPhase1ToolBPhotoSrc(question?.photo)) ? (
+                <div className="log-data-images">
+                  <div className="log-data-title">Tool B photos / drawings (Phase 1)</div>
+                  <p className="log-data-desc">
+                    Question photos and canvas drawings from Tool B. Stored as PNG in Supabase Storage when remote
+                    save is enabled.
+                  </p>
+                  <div className="log-data-image-grid">
+                    {(loadedDraft.toolB.questions || []).map((question, index) => {
+                      const src = getPhase1ToolBPhotoSrc(question?.photo);
+                      if (!src) return null;
+                      return (
+                        <figure className="log-data-image-card" key={`tool-b-photo-${index}`}>
+                          <img src={src} alt={question?.photo?.name || `Tool B Q${index + 1}`} />
+                          <figcaption>
+                            Q{question?.num || index + 1}
+                            {question?.photo?.name ? ` · ${question.photo.name}` : ""}
+                          </figcaption>
+                        </figure>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="log-data-row">
                 <div className="log-data-info">
                   <div className="log-data-title">Phase 2 log data</div>
-                  <p className="log-data-desc">Full session JSON with embedded Tool C PNG data.</p>
+                  <p className="log-data-desc">
+                    Full session JSON. Tool C images use Storage PNG URLs when Supabase is configured.
+                  </p>
                   {phase2SavedAt ? (
                     <span className="log-data-saved">Downloaded {new Date(phase2SavedAt).toLocaleString()}</span>
                   ) : (
@@ -4936,7 +4983,7 @@ export default function App() {
                 <div className="log-data-images">
                   <div className="log-data-title">Tool C images (PNG)</div>
                   <p className="log-data-desc">
-                    Previewed from the loaded session. These images download as embedded PNG data in the Phase 2 JSON.
+                    Previewed from the loaded session (Storage URL or embedded PNG data).
                   </p>
                   <div className="log-data-image-grid">
                     {(loadedDraft.phaseTwo.toolC.perValueDrawings || []).map((drawing, index) => {

@@ -1,5 +1,6 @@
 const PARTICIPANT_SESSION_DRAFT_PREFIX = "seattle-children-participant-draft:";
 const TABLE = "participant_sessions";
+export const SESSION_ASSETS_BUCKET = "session-assets";
 
 function cleanSessionId(sessionId) {
   const id = String(sessionId || "").trim();
@@ -78,6 +79,23 @@ async function supabaseRequest(path, { method = "GET", body, headers } = {}) {
   return { data, error: null };
 }
 
+function dataUrlToBlob(dataUrl, fallbackType = "image/png") {
+  const match = /^data:([^;]+);base64,(.+)$/.exec(String(dataUrl || ""));
+  if (!match) return null;
+  const mime = match[1] || fallbackType;
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+function sanitizeStoragePath(path) {
+  return String(path || "")
+    .replace(/^\/+/, "")
+    .replace(/\.\./g, "")
+    .replace(/[^a-zA-Z0-9._\-/]/g, "-");
+}
+
 export function isRemoteStorageConfigured() {
   return Boolean(getSupabaseConfig());
 }
@@ -86,15 +104,74 @@ export function getStorageBackendLabel() {
   return isRemoteStorageConfigured() ? "Supabase" : "Local browser storage only";
 }
 
+export function getSessionAssetPublicUrl(objectPath) {
+  const config = getSupabaseConfig();
+  if (!config) return "";
+  const cleanPath = sanitizeStoragePath(objectPath);
+  return `${config.url}/storage/v1/object/public/${SESSION_ASSETS_BUCKET}/${cleanPath}`;
+}
+
+/**
+ * Upload a PNG (or other image) to the public session-assets bucket.
+ * Returns the public URL, or null when remote storage is not configured.
+ */
+export async function uploadSessionAsset({ sessionId, path, dataUrl, contentType = "image/png" } = {}) {
+  const config = getSupabaseConfig();
+  if (!config) return null;
+
+  const cleanId = cleanSessionId(sessionId);
+  const relative = sanitizeStoragePath(path);
+  if (!relative) throw new Error("Missing storage path");
+
+  const objectPath = `${cleanId}/${relative}`;
+  const blob =
+    dataUrl instanceof Blob
+      ? dataUrl
+      : dataUrlToBlob(dataUrl, contentType);
+  if (!blob) throw new Error("Invalid image data for storage upload");
+
+  const response = await fetch(
+    `${config.url}/storage/v1/object/${SESSION_ASSETS_BUCKET}/${objectPath}`,
+    {
+      method: "POST",
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        "Content-Type": blob.type || contentType,
+        "x-upsert": "true"
+      },
+      body: blob
+    }
+  );
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const errBody = await response.json();
+      detail = errBody?.message || errBody?.error || "";
+    } catch {
+      detail = await response.text();
+    }
+    throw new Error(detail || `Failed to upload session asset (${response.status})`);
+  }
+
+  return getSessionAssetPublicUrl(objectPath);
+}
+
 export async function saveParticipantSessionRemote(session) {
   const sessionId = cleanSessionId(session?.sessionId);
   const savedAt = new Date().toISOString();
-  const savedSession = {
+  let savedSession = {
     ...session,
     sessionId,
     updatedAt: savedAt,
     savedAt
   };
+
+  if (isRemoteStorageConfigured()) {
+    const { offloadSessionAssets } = await import("./sessionAssets.js");
+    savedSession = await offloadSessionAssets(savedSession);
+  }
 
   writeParticipantSessionDraft(savedSession);
 
@@ -157,12 +234,6 @@ export async function listParticipantSessionsRemote() {
     );
 }
 
-export async function uploadSessionAsset() {
-  return null;
-}
-
 export async function rebuildLogDataRemote() {
   return null;
 }
-
-export const SESSION_ASSETS_BUCKET = null;
