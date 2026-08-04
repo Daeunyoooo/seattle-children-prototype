@@ -4701,15 +4701,6 @@ export default function App() {
             ) : null}
             <div className="participant-id-actions">
               <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, "", getParticipantPath());
-                  window.location.reload();
-                }}
-              >
-                Open participant app
-              </button>
-              <button
                 className="primary"
                 type="button"
                 disabled={!researcherPassword.trim()}
@@ -4722,7 +4713,7 @@ export default function App() {
                   setResearcherUnlocked(true);
                 }}
               >
-                Unlock dashboard
+                Start
               </button>
             </div>
           </div>
