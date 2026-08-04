@@ -1216,6 +1216,9 @@ export default function App() {
   const [linkedCaregiverSyncedAt, setLinkedCaregiverSyncedAt] = useState(null);
   const [researcherSessionLookup, setResearcherSessionLookup] = useState(() => createInitialParticipantSessionId());
   const [researcherFocusRole, setResearcherFocusRole] = useState("youth");
+  const [researcherPassword, setResearcherPassword] = useState("");
+  const [researcherPasswordError, setResearcherPasswordError] = useState("");
+  const [researcherUnlocked, setResearcherUnlocked] = useState(false);
   const [researcherStatus, setResearcherStatus] = useState("");
   const [researcherJsonPaste, setResearcherJsonPaste] = useState("");
   const [researcherExportTool, setResearcherExportTool] = useState("A");
@@ -4659,6 +4662,74 @@ export default function App() {
 
   if (researcherMode) {
     void researcherDraftTick;
+
+    if (!researcherUnlocked) {
+      return (
+        <div className="app researcher-app">
+          <div className="participant-id-card participant-id-card--intro">
+            <div>
+              <h1 className="participant-id-title">Researcher Tools</h1>
+              <p className="participant-id-subtitle">Enter the researcher password to open the dashboard.</p>
+            </div>
+            <label className="participant-id-label">
+              Password
+              <input
+                type="password"
+                value={researcherPassword}
+                placeholder="Enter password"
+                autoComplete="off"
+                autoFocus
+                onChange={(event) => {
+                  setResearcherPassword(event.target.value);
+                  if (researcherPasswordError) setResearcherPasswordError("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  if (researcherPassword.trim() !== PARTICIPANT_ACCESS_PASSWORD) {
+                    setResearcherPasswordError("Incorrect password.");
+                    return;
+                  }
+                  setResearcherPasswordError("");
+                  setResearcherUnlocked(true);
+                }}
+              />
+            </label>
+            {researcherPasswordError ? (
+              <p className="participant-id-error" role="alert">
+                {researcherPasswordError}
+              </p>
+            ) : null}
+            <div className="participant-id-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, "", getParticipantPath());
+                  window.location.reload();
+                }}
+              >
+                Open participant app
+              </button>
+              <button
+                className="primary"
+                type="button"
+                disabled={!researcherPassword.trim()}
+                onClick={() => {
+                  if (researcherPassword.trim() !== PARTICIPANT_ACCESS_PASSWORD) {
+                    setResearcherPasswordError("Incorrect password.");
+                    return;
+                  }
+                  setResearcherPasswordError("");
+                  setResearcherUnlocked(true);
+                }}
+              >
+                Unlock dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const loadedDraft = readParticipantSessionDraft(researcherSessionLookup);
     const phase1Complete =
       loadedDraft?.phaseOne?.completedTools?.length === 2 ||
@@ -4672,10 +4743,6 @@ export default function App() {
     return (
       <div className="app researcher-app">
         <h1 className="researcher-title">Researcher Tools</h1>
-
-        <p className="researcher-api-ok">
-          Data stays in this browser until the researcher downloads JSON files. Nothing is saved to GitHub Pages.
-        </p>
 
         <section className="researcher-card researcher-participant-bar">
           <h2>Who are you working with?</h2>
@@ -5116,17 +5183,6 @@ export default function App() {
                   <span className="role-entry-card-copy">
                     Same Phase 1 tools and AI elicitation as Youth. Researcher later links Youth values for Phase 2.
                   </span>
-                </button>
-              </div>
-              <div className="participant-id-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.history.pushState({}, "", getResearcherPath());
-                    window.location.reload();
-                  }}
-                >
-                  Researcher dashboard
                 </button>
               </div>
             </>
