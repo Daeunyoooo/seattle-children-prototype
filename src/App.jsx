@@ -260,28 +260,44 @@ function mapTextsToPhase2ValueItems(texts, idPrefix, iconForValue) {
     .filter(Boolean);
 }
 
+function extractValueLabel(value) {
+  if (typeof value === "string") return cleanValueText(value);
+  return cleanValueText(value?.text || value?.label || value?.value);
+}
+
+function collectValueLabels(list) {
+  return (Array.isArray(list) ? list : []).map(extractValueLabel).filter(Boolean);
+}
+
 function extractLinkedPeerValuesFromSessionJson(payload, peerLabel) {
   const session = payload?.session && typeof payload.session === "object" ? payload.session : payload;
   if (!session || typeof session !== "object") {
     throw new Error(`${peerLabel} JSON must be a participant session export.`);
   }
 
-  // Prefer Phase 2 selection when present; otherwise use Phase 1 identified values
-  // so peers can sync after Phase 1 only (before either side starts Phase 2).
-  const selected = (Array.isArray(session.phase2?.selectedValues) ? session.phase2.selectedValues : [])
-    .map(cleanValueText)
-    .filter(Boolean);
+  // Prefer Phase 1 summary / Phase 2 selection when present; otherwise Tool A/B
+  // identified values; finally AI-generated suggestions stamped per tool.
+  const selected = collectValueLabels(session.phase2?.selectedValues);
   const phase1Values = [
-    ...(Array.isArray(session.toolA?.identifiedValues) ? session.toolA.identifiedValues : []),
-    ...(Array.isArray(session.toolB?.identifiedValues) ? session.toolB.identifiedValues : [])
-  ]
-    .map(cleanValueText)
-    .filter(Boolean);
+    ...collectValueLabels(session.toolA?.identifiedValues),
+    ...collectValueLabels(session.toolB?.identifiedValues)
+  ];
   const uniquePhase1Values = [...new Set(phase1Values)];
-  const values = selected.length > 0 ? selected : uniquePhase1Values;
+  const aiFallbackValues = [
+    ...collectValueLabels(session.aiGeneratedValuesByTool?.A),
+    ...collectValueLabels(session.aiGeneratedValuesByTool?.B),
+    ...collectValueLabels(session.aiGeneratedValues)
+  ];
+  const uniqueAiFallbackValues = [...new Set(aiFallbackValues)];
+  const values =
+    selected.length > 0
+      ? selected
+      : uniquePhase1Values.length > 0
+        ? uniquePhase1Values
+        : uniqueAiFallbackValues;
   if (!values.length) {
     throw new Error(
-      `${peerLabel} JSON has no Phase 2 selectedValues and no Tool A/B identifiedValues. Finish Phase 1 first, then download the Phase 1 log.`
+      `${peerLabel} JSON has no selectedValues, Tool A/B identifiedValues, or AI-generated values. Finish Phase 1 first, then download the Phase 1 log.`
     );
   }
 
@@ -484,12 +500,45 @@ function writeParticipantSessionDraft(session) {
   }
 }
 
+function hasNonEmptyLinkedValues(values) {
+  return Array.isArray(values) && values.map(extractValueLabel).filter(Boolean).length > 0;
+}
+
+function mergePreservedLinkedFields(primary, secondary) {
+  if (!primary) return secondary || null;
+  if (!secondary) return primary;
+  const next = { ...primary };
+
+  if (!hasNonEmptyLinkedValues(next.linkedYouthValues) && hasNonEmptyLinkedValues(secondary.linkedYouthValues)) {
+    next.linkedYouthValues = secondary.linkedYouthValues;
+    next.linkedYouthParticipantId = secondary.linkedYouthParticipantId ?? next.linkedYouthParticipantId;
+    next.linkedYouthDrawings = secondary.linkedYouthDrawings ?? next.linkedYouthDrawings;
+    next.linkedYouthSyncedAt = secondary.linkedYouthSyncedAt ?? next.linkedYouthSyncedAt;
+  }
+
+  if (
+    !hasNonEmptyLinkedValues(next.linkedCaregiverValues) &&
+    hasNonEmptyLinkedValues(secondary.linkedCaregiverValues)
+  ) {
+    next.linkedCaregiverValues = secondary.linkedCaregiverValues;
+    next.linkedCaregiverParticipantId =
+      secondary.linkedCaregiverParticipantId ?? next.linkedCaregiverParticipantId;
+    next.linkedCaregiverDrawings = secondary.linkedCaregiverDrawings ?? next.linkedCaregiverDrawings;
+    next.linkedCaregiverSyncedAt = secondary.linkedCaregiverSyncedAt ?? next.linkedCaregiverSyncedAt;
+  }
+
+  return next;
+}
+
 function pickNewerDraft(localDraft, remoteDraft) {
   if (!localDraft) return remoteDraft;
   if (!remoteDraft) return localDraft;
   const localTime = Date.parse(localDraft.updatedAt || localDraft.savedAt || localDraft.exportedAt || 0);
   const remoteTime = Date.parse(remoteDraft.updatedAt || remoteDraft.savedAt || remoteDraft.exportedAt || 0);
-  return remoteTime >= localTime ? remoteDraft : localDraft;
+  const newer = remoteTime >= localTime ? remoteDraft : localDraft;
+  const older = newer === remoteDraft ? localDraft : remoteDraft;
+  // Never let a newer draft wipe peer-linked values with empty arrays.
+  return mergePreservedLinkedFields(newer, older);
 }
 
 async function resolveParticipantDraft(sessionId) {
@@ -1233,6 +1282,7 @@ export default function App() {
   const [researcherExportTool, setResearcherExportTool] = useState("A");
   const [researcherImportTool, setResearcherImportTool] = useState("A");
   const [researcherDropTarget, setResearcherDropTarget] = useState(null);
+  const [peerLinkStatus, setPeerLinkStatus] = useState(null);
   const [sessionSaved, setSessionSaved] = useState(false);
   const [sessionSaveStatus, setSessionSaveStatus] = useState("");
   const [participantFinished, setParticipantFinished] = useState(false);
@@ -2103,11 +2153,17 @@ export default function App() {
     const timer = setTimeout(async () => {
       try {
         const draft = await buildParticipantSessionExportAsync();
-        await saveParticipantSessionRemote({
-          ...draft,
-          sessionStatus: "in_progress",
-          updatedAt: new Date().toISOString()
-        });
+        const existingDraft = readParticipantSessionDraft(participantSessionId);
+        const synced = mergePreservedLinkedFields(
+          {
+            ...draft,
+            sessionStatus: "in_progress",
+            updatedAt: new Date().toISOString()
+          },
+          existingDraft
+        );
+        writeParticipantSessionDraft(synced);
+        await saveParticipantSessionRemote(synced);
         setParticipantSyncStatus("");
       } catch {
         setParticipantSyncStatus(
@@ -2897,24 +2953,33 @@ export default function App() {
   }
 
   function persistParticipantDraft(patch = {}) {
-    const session = {
-      ...buildParticipantSessionExport(),
-      ...patch,
-      sessionId: cleanValueText(patch.sessionId || participantSessionId) || participantSessionId,
-      updatedAt: new Date().toISOString(),
-      sessionStatus: patch.sessionStatus || (sessionSaved ? "completed" : "in_progress")
-    };
+    const sessionId = cleanValueText(patch.sessionId || participantSessionId) || participantSessionId;
+    const existingDraft = readParticipantSessionDraft(sessionId);
+    const session = mergePreservedLinkedFields(
+      {
+        ...buildParticipantSessionExport(),
+        ...patch,
+        sessionId,
+        updatedAt: new Date().toISOString(),
+        sessionStatus: patch.sessionStatus || (sessionSaved ? "completed" : "in_progress")
+      },
+      existingDraft
+    );
     writeParticipantSessionDraft(session);
     return session;
   }
 
   async function syncFullDraftForResearcher() {
     const session = await buildParticipantSessionExportAsync();
-    const draft = {
-      ...session,
-      sessionStatus: "in_progress",
-      updatedAt: new Date().toISOString()
-    };
+    const existingDraft = readParticipantSessionDraft(participantSessionId);
+    const draft = mergePreservedLinkedFields(
+      {
+        ...session,
+        sessionStatus: "in_progress",
+        updatedAt: new Date().toISOString()
+      },
+      existingDraft
+    );
     writeParticipantSessionDraft(draft);
     try {
       await saveParticipantSessionRemote(draft);
@@ -2933,12 +2998,16 @@ export default function App() {
     try {
       snapshotPerValueDrawings();
       const draft = await buildParticipantSessionExportAsync();
-      const savedDraft = {
-        ...draft,
-        sessionStatus: "in_progress",
-        participantFinished: true,
-        updatedAt: new Date().toISOString()
-      };
+      const existingDraft = readParticipantSessionDraft(participantSessionId);
+      const savedDraft = mergePreservedLinkedFields(
+        {
+          ...draft,
+          sessionStatus: "in_progress",
+          participantFinished: true,
+          updatedAt: new Date().toISOString()
+        },
+        existingDraft
+      );
       writeParticipantSessionDraft(savedDraft);
       await saveParticipantSessionRemote(savedDraft, { checkpoint: "phase2" });
       setParticipantFinished(true);
@@ -4533,11 +4602,23 @@ export default function App() {
     setParticipantIntroComplete(true);
   }
 
+  function setPeerLinkFeedback(tone, message) {
+    setPeerLinkStatus({ tone, message });
+    setResearcherStatus(message);
+  }
+
   async function applyLinkedYouthValuesImport(payload) {
     const linked = extractLinkedYouthValuesFromSessionJson(payload);
     const targetSessionId = cleanValueText(researcherSessionLookup) || participantSessionId;
     if (!targetSessionId) {
-      setResearcherStatus("Enter the caregiver Participant ID first, then upload the Youth JSON.");
+      setPeerLinkFeedback("error", "Enter the Caregiver Participant ID first, then upload the Youth JSON.");
+      return;
+    }
+    if (researcherFocusRole !== "caregiver") {
+      setPeerLinkFeedback(
+        "error",
+        "Switch to Caregiver mode, enter the Caregiver Participant ID, then upload the Youth JSON."
+      );
       return;
     }
     const baseSession = readParticipantSessionDraft(targetSessionId) || {
@@ -4548,14 +4629,11 @@ export default function App() {
       phaseOne: { currentScreen: "questions", completedTools: [], currentTool: "A" },
       phase2: { selectedValues: [], selectedGoalSources: ["A", "B"] }
     };
-    const looksLikeYouthSession =
-      normalizeParticipantRole(baseSession.role) === "youth" &&
-      ((baseSession.phase2?.selectedValues || []).length > 0 ||
-        (baseSession.toolA?.identifiedValues || []).length > 0 ||
-        (baseSession.toolB?.identifiedValues || []).length > 0);
-    if (looksLikeYouthSession) {
-      setResearcherStatus(
-        `Participant ${targetSessionId} looks like a Youth session. Enter the caregiver Participant ID, then upload the Youth JSON.`
+    // Only block when the draft is explicitly a Youth session (missing role is OK for new stubs).
+    if (baseSession.role === "youth") {
+      setPeerLinkFeedback(
+        "error",
+        `Participant ${targetSessionId} is a Youth session. Enter the Caregiver Participant ID (not the Youth ID), then upload the Youth JSON.`
       );
       return;
     }
@@ -4590,23 +4668,25 @@ export default function App() {
       linked.linkedYouthDrawings.length > 0
         ? ` including ${linked.linkedYouthDrawings.length} Tool C drawing${linked.linkedYouthDrawings.length === 1 ? "" : "s"}`
         : " (no Tool C drawings found — upload Youth Phase 2 JSON for images)";
-    setResearcherStatus(
+    setPeerLinkFeedback(
+      "success",
       `Linked ${linked.linkedYouthValues.length} Youth value${linked.linkedYouthValues.length === 1 ? "" : "s"} from ${youthLabel} to caregiver ${targetSessionId}${drawingNote}.`
     );
   }
 
   function importLinkedYouthValuesFile(file) {
     if (!file) return;
+    setPeerLinkFeedback("pending", "Reading Youth JSON…");
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const payload = JSON.parse(String(reader.result || "{}"));
         await applyLinkedYouthValuesImport(payload);
       } catch (error) {
-        setResearcherStatus(error.message || "Could not import Youth session JSON.");
+        setPeerLinkFeedback("error", error.message || "Could not import Youth session JSON.");
       }
     };
-    reader.onerror = () => setResearcherStatus("Could not read Youth session JSON file.");
+    reader.onerror = () => setPeerLinkFeedback("error", "Could not read Youth session JSON file.");
     reader.readAsText(file);
   }
 
@@ -4636,11 +4716,11 @@ export default function App() {
     setResearcherDropTarget(null);
     const file = event.dataTransfer?.files?.[0];
     if (!file) {
-      setResearcherStatus(`Drop a ${label} session JSON file.`);
+      setPeerLinkFeedback("error", `Drop a ${label} session JSON file.`);
       return;
     }
     if (!isJsonSessionFile(file)) {
-      setResearcherStatus(`Please drop a .json file for ${label}.`);
+      setPeerLinkFeedback("error", `Please drop a .json file for ${label}.`);
       return;
     }
     onFile(file);
@@ -4650,7 +4730,14 @@ export default function App() {
     const linked = extractLinkedCaregiverValuesFromSessionJson(payload);
     const targetSessionId = cleanValueText(researcherSessionLookup) || participantSessionId;
     if (!targetSessionId) {
-      setResearcherStatus("Enter the Youth Participant ID first, then upload the Caregiver JSON.");
+      setPeerLinkFeedback("error", "Enter the Youth Participant ID first, then upload the Caregiver JSON.");
+      return;
+    }
+    if (researcherFocusRole !== "youth") {
+      setPeerLinkFeedback(
+        "error",
+        "Switch to Youth mode, enter the Youth Participant ID, then upload the Caregiver JSON."
+      );
       return;
     }
     const baseSession = readParticipantSessionDraft(targetSessionId) || {
@@ -4661,15 +4748,11 @@ export default function App() {
       phaseOne: { currentScreen: "questions", completedTools: [], currentTool: "A" },
       phase2: { selectedValues: [], selectedGoalSources: ["A", "B"] }
     };
-    const looksLikeCaregiverSession =
-      normalizeParticipantRole(baseSession.role) === "caregiver" &&
-      ((baseSession.phase2?.selectedValues || []).length > 0 ||
-        (baseSession.toolA?.identifiedValues || []).length > 0 ||
-        (baseSession.toolB?.identifiedValues || []).length > 0 ||
-        (baseSession.linkedYouthValues || []).length > 0);
-    if (looksLikeCaregiverSession) {
-      setResearcherStatus(
-        `Participant ${targetSessionId} looks like a Caregiver session. Enter the Youth Participant ID, then upload the Caregiver JSON.`
+    // Only block when the draft is explicitly a Caregiver session.
+    if (baseSession.role === "caregiver") {
+      setPeerLinkFeedback(
+        "error",
+        `Participant ${targetSessionId} is a Caregiver session. Enter the Youth Participant ID (not the Caregiver ID), then upload the Caregiver JSON.`
       );
       return;
     }
@@ -4706,7 +4789,8 @@ export default function App() {
             linked.linkedCaregiverDrawings.length === 1 ? "" : "s"
           }`
         : " (no Tool C drawings found — upload Caregiver Phase 2 JSON for images)";
-    setResearcherStatus(
+    setPeerLinkFeedback(
+      "success",
       `Linked ${linked.linkedCaregiverValues.length} Caregiver value${
         linked.linkedCaregiverValues.length === 1 ? "" : "s"
       } from ${caregiverLabel} to Youth ${targetSessionId}${drawingNote}.`
@@ -4715,16 +4799,17 @@ export default function App() {
 
   function importLinkedCaregiverValuesFile(file) {
     if (!file) return;
+    setPeerLinkFeedback("pending", "Reading Caregiver JSON…");
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const payload = JSON.parse(String(reader.result || "{}"));
         await applyLinkedCaregiverValuesImport(payload);
       } catch (error) {
-        setResearcherStatus(error.message || "Could not import Caregiver session JSON.");
+        setPeerLinkFeedback("error", error.message || "Could not import Caregiver session JSON.");
       }
     };
-    reader.onerror = () => setResearcherStatus("Could not read Caregiver session JSON file.");
+    reader.onerror = () => setPeerLinkFeedback("error", "Could not read Caregiver session JSON file.");
     reader.readAsText(file);
   }
 
@@ -4798,6 +4883,45 @@ export default function App() {
     const phase1SavedAt = loadedDraft?.checkpoints?.phase1?.savedAt;
     const phase2SavedAt = loadedDraft?.checkpoints?.phase2?.savedAt;
     const researcherWorkingWithCaregiver = researcherFocusRole === "caregiver";
+    const draftRoleExplicit = PARTICIPANT_ROLES.includes(loadedDraft?.role) ? loadedDraft.role : null;
+    const focusRoleMismatch =
+      Boolean(draftRoleExplicit) &&
+      ((researcherWorkingWithCaregiver && draftRoleExplicit === "youth") ||
+        (!researcherWorkingWithCaregiver && draftRoleExplicit === "caregiver"));
+    const displayLinkedYouthValues =
+      (loadedDraft?.linkedYouthValues || []).length > 0
+        ? loadedDraft.linkedYouthValues
+        : researcherWorkingWithCaregiver
+          ? linkedYouthValues
+          : [];
+    const displayLinkedYouthParticipantId =
+      loadedDraft?.linkedYouthParticipantId || (researcherWorkingWithCaregiver ? linkedYouthParticipantId : "");
+    const displayLinkedYouthSyncedAt =
+      loadedDraft?.linkedYouthSyncedAt || (researcherWorkingWithCaregiver ? linkedYouthSyncedAt : null);
+    const displayLinkedYouthDrawings =
+      (loadedDraft?.linkedYouthDrawings || []).length > 0
+        ? loadedDraft.linkedYouthDrawings
+        : researcherWorkingWithCaregiver
+          ? linkedYouthDrawings
+          : [];
+    const displayLinkedCaregiverValues =
+      (loadedDraft?.linkedCaregiverValues || []).length > 0
+        ? loadedDraft.linkedCaregiverValues
+        : !researcherWorkingWithCaregiver
+          ? linkedCaregiverValues
+          : [];
+    const displayLinkedCaregiverParticipantId =
+      loadedDraft?.linkedCaregiverParticipantId ||
+      (!researcherWorkingWithCaregiver ? linkedCaregiverParticipantId : "");
+    const displayLinkedCaregiverSyncedAt =
+      loadedDraft?.linkedCaregiverSyncedAt ||
+      (!researcherWorkingWithCaregiver ? linkedCaregiverSyncedAt : null);
+    const displayLinkedCaregiverDrawings =
+      (loadedDraft?.linkedCaregiverDrawings || []).length > 0
+        ? loadedDraft.linkedCaregiverDrawings
+        : !researcherWorkingWithCaregiver
+          ? linkedCaregiverDrawings
+          : [];
 
     return (
       <div className="app researcher-app">
@@ -4814,7 +4938,10 @@ export default function App() {
               type="button"
               className={`role-entry-card ${researcherFocusRole === "youth" ? "is-selected" : ""}`}
               aria-pressed={researcherFocusRole === "youth"}
-              onClick={() => setResearcherFocusRole("youth")}
+              onClick={() => {
+                setResearcherFocusRole("youth");
+                setPeerLinkStatus(null);
+              }}
             >
               <span className="role-entry-card-kicker">Session type</span>
               <strong className="role-entry-card-title">Youth</strong>
@@ -4824,7 +4951,10 @@ export default function App() {
               type="button"
               className={`role-entry-card ${researcherFocusRole === "caregiver" ? "is-selected" : ""}`}
               aria-pressed={researcherFocusRole === "caregiver"}
-              onClick={() => setResearcherFocusRole("caregiver")}
+              onClick={() => {
+                setResearcherFocusRole("caregiver");
+                setPeerLinkStatus(null);
+              }}
             >
               <span className="role-entry-card-kicker">Session type</span>
               <strong className="role-entry-card-title">Caregiver</strong>
@@ -4841,24 +4971,35 @@ export default function App() {
                 type="text"
                 value={researcherSessionLookup}
                 placeholder={researcherWorkingWithCaregiver ? "C1" : "P1"}
-                onChange={(event) => setResearcherSessionLookup(event.target.value.trim())}
+                onChange={(event) => {
+                  setResearcherSessionLookup(event.target.value.trim());
+                  setPeerLinkStatus(null);
+                }}
               />
             </label>
             <button type="button" onClick={loadParticipantDraftForResearcher}>
               Load draft
             </button>
           </div>
+          {focusRoleMismatch ? (
+            <p className="researcher-peer-link-status is-error" role="alert">
+              {researcherWorkingWithCaregiver
+                ? `ID ${researcherSessionLookup} is a Youth draft. Enter the Caregiver Participant ID before linking Youth values.`
+                : `ID ${researcherSessionLookup} is a Caregiver draft. Enter the Youth Participant ID before linking Caregiver values.`}
+            </p>
+          ) : null}
           {loadedDraft ? (
             <p className="researcher-draft-summary">
               {researcherSessionLookup}: {loadedDraft.role === "caregiver" ? "Caregiver" : "Youth"} · Phase{" "}
               {loadedDraft.phase || 1}
               {loadedDraft.phase === 2 ? ` · ${loadedDraft.phaseTwo?.currentScreen || "tools"}` : ` · ${loadedDraft.phaseOne?.currentScreen || "questions"}`}
               {loadedDraft.participantFinished ? " · participant finished" : ""}
-              {loadedDraft.role === "caregiver" && loadedDraft.linkedYouthParticipantId
-                ? ` · linked Youth ${loadedDraft.linkedYouthParticipantId} (${(loadedDraft.linkedYouthValues || []).length} values)`
+              {displayLinkedYouthValues.length > 0 && (loadedDraft.role === "caregiver" || researcherWorkingWithCaregiver)
+                ? ` · linked Youth ${displayLinkedYouthParticipantId || "?"} (${displayLinkedYouthValues.length} values)`
                 : ""}
-              {loadedDraft.role !== "caregiver" && loadedDraft.linkedCaregiverParticipantId
-                ? ` · linked Caregiver ${loadedDraft.linkedCaregiverParticipantId} (${(loadedDraft.linkedCaregiverValues || []).length} values)`
+              {displayLinkedCaregiverValues.length > 0 &&
+              (loadedDraft.role !== "caregiver" || !researcherWorkingWithCaregiver)
+                ? ` · linked Caregiver ${displayLinkedCaregiverParticipantId || "?"} (${displayLinkedCaregiverValues.length} values)`
                 : ""}
             </p>
           ) : (
@@ -4892,9 +5033,6 @@ export default function App() {
                 onDrop={(event) => handleResearcherJsonDrop(event, importLinkedYouthValuesFile, "Youth")}
               >
                 <p className="researcher-json-dropzone-title">Drag and drop Youth session JSON here</p>
-                <p className="researcher-json-dropzone-hint">
-                  Phase 1 log is enough for values; Phase 2 log also brings Tool C drawings
-                </p>
                 <span className="researcher-json-dropzone-or">or</span>
                 <label className="researcher-file-drop">
                   <input
@@ -4908,18 +5046,26 @@ export default function App() {
                   Choose Youth JSON file
                 </label>
               </div>
-              {(loadedDraft?.linkedYouthValues || []).length > 0 ? (
+              {peerLinkStatus ? (
+                <p
+                  className={`researcher-peer-link-status is-${peerLinkStatus.tone}`}
+                  role={peerLinkStatus.tone === "error" ? "alert" : "status"}
+                >
+                  {peerLinkStatus.message}
+                </p>
+              ) : null}
+              {displayLinkedYouthValues.length > 0 ? (
                 <div className="researcher-value-list">
                   <p className="researcher-draft-summary">
-                    Linked from {loadedDraft.linkedYouthParticipantId || "Youth"}
-                    {loadedDraft.linkedYouthSyncedAt
-                      ? ` · ${new Date(loadedDraft.linkedYouthSyncedAt).toLocaleString()}`
+                    Linked from {displayLinkedYouthParticipantId || "Youth"}
+                    {displayLinkedYouthSyncedAt
+                      ? ` · ${new Date(displayLinkedYouthSyncedAt).toLocaleString()}`
                       : ""}
-                    {` · ${(loadedDraft.linkedYouthDrawings || []).length} Tool C drawing${
-                      (loadedDraft.linkedYouthDrawings || []).length === 1 ? "" : "s"
+                    {` · ${displayLinkedYouthDrawings.length} Tool C drawing${
+                      displayLinkedYouthDrawings.length === 1 ? "" : "s"
                     }`}
                   </p>
-                  {loadedDraft.linkedYouthValues.map((value) => (
+                  {displayLinkedYouthValues.map((value) => (
                     <div className="researcher-value-chip" key={value}>
                       <strong>{value}</strong>
                     </div>
@@ -4953,9 +5099,6 @@ export default function App() {
                 onDrop={(event) => handleResearcherJsonDrop(event, importLinkedCaregiverValuesFile, "Caregiver")}
               >
                 <p className="researcher-json-dropzone-title">Drag and drop Caregiver session JSON here</p>
-                <p className="researcher-json-dropzone-hint">
-                  Phase 1 log is enough for values; Phase 2 log also brings Tool C drawings
-                </p>
                 <span className="researcher-json-dropzone-or">or</span>
                 <label className="researcher-file-drop">
                   <input
@@ -4969,18 +5112,26 @@ export default function App() {
                   Choose Caregiver JSON file
                 </label>
               </div>
-              {(loadedDraft?.linkedCaregiverValues || []).length > 0 ? (
+              {peerLinkStatus ? (
+                <p
+                  className={`researcher-peer-link-status is-${peerLinkStatus.tone}`}
+                  role={peerLinkStatus.tone === "error" ? "alert" : "status"}
+                >
+                  {peerLinkStatus.message}
+                </p>
+              ) : null}
+              {displayLinkedCaregiverValues.length > 0 ? (
                 <div className="researcher-value-list">
                   <p className="researcher-draft-summary">
-                    Linked from {loadedDraft.linkedCaregiverParticipantId || "Caregiver"}
-                    {loadedDraft.linkedCaregiverSyncedAt
-                      ? ` · ${new Date(loadedDraft.linkedCaregiverSyncedAt).toLocaleString()}`
+                    Linked from {displayLinkedCaregiverParticipantId || "Caregiver"}
+                    {displayLinkedCaregiverSyncedAt
+                      ? ` · ${new Date(displayLinkedCaregiverSyncedAt).toLocaleString()}`
                       : ""}
-                    {` · ${(loadedDraft.linkedCaregiverDrawings || []).length} Tool C drawing${
-                      (loadedDraft.linkedCaregiverDrawings || []).length === 1 ? "" : "s"
+                    {` · ${displayLinkedCaregiverDrawings.length} Tool C drawing${
+                      displayLinkedCaregiverDrawings.length === 1 ? "" : "s"
                     }`}
                   </p>
-                  {loadedDraft.linkedCaregiverValues.map((value) => (
+                  {displayLinkedCaregiverValues.map((value) => (
                     <div className="researcher-value-chip" key={value}>
                       <strong>{value}</strong>
                     </div>

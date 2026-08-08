@@ -3097,6 +3097,32 @@ canvas.draw-cv {
   line-height: 1.4;
 }
 
+.researcher-peer-link-status {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--border-radius-md);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.researcher-peer-link-status.is-pending {
+  border: 0.5px solid rgba(55, 138, 221, 0.28);
+  background: #f5f9fd;
+  color: #185fa5;
+}
+
+.researcher-peer-link-status.is-success {
+  border: 0.5px solid rgba(29, 158, 117, 0.35);
+  background: rgba(29, 158, 117, 0.08);
+  color: #0f6e56;
+}
+
+.researcher-peer-link-status.is-error {
+  border: 0.5px solid rgba(229, 72, 77, 0.35);
+  background: rgba(229, 72, 77, 0.08);
+  color: #a32d2d;
+}
+
 .researcher-value-chip {
   display: flex;
   align-items: center;
