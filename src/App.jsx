@@ -265,15 +265,24 @@ function extractLinkedPeerValuesFromSessionJson(payload, peerLabel) {
   if (!session || typeof session !== "object") {
     throw new Error(`${peerLabel} JSON must be a participant session export.`);
   }
-  const selected = session.phase2?.selectedValues;
-  if (!Array.isArray(selected) || selected.length === 0) {
-    throw new Error(
-      `${peerLabel} JSON must include phase2.selectedValues (non-empty). Download the ${peerLabel} Phase 1 or Phase 2 log first.`
-    );
-  }
-  const values = selected.map(cleanValueText).filter(Boolean);
+
+  // Prefer Phase 2 selection when present; otherwise use Phase 1 identified values
+  // so peers can sync after Phase 1 only (before either side starts Phase 2).
+  const selected = (Array.isArray(session.phase2?.selectedValues) ? session.phase2.selectedValues : [])
+    .map(cleanValueText)
+    .filter(Boolean);
+  const phase1Values = [
+    ...(Array.isArray(session.toolA?.identifiedValues) ? session.toolA.identifiedValues : []),
+    ...(Array.isArray(session.toolB?.identifiedValues) ? session.toolB.identifiedValues : [])
+  ]
+    .map(cleanValueText)
+    .filter(Boolean);
+  const uniquePhase1Values = [...new Set(phase1Values)];
+  const values = selected.length > 0 ? selected : uniquePhase1Values;
   if (!values.length) {
-    throw new Error(`${peerLabel} JSON did not include any usable Phase 2 values.`);
+    throw new Error(
+      `${peerLabel} JSON has no Phase 2 selectedValues and no Tool A/B identifiedValues. Finish Phase 1 first, then download the Phase 1 log.`
+    );
   }
 
   const rawDrawings = Array.isArray(session.phaseTwo?.toolC?.perValueDrawings)
@@ -1223,6 +1232,7 @@ export default function App() {
   const [researcherJsonPaste, setResearcherJsonPaste] = useState("");
   const [researcherExportTool, setResearcherExportTool] = useState("A");
   const [researcherImportTool, setResearcherImportTool] = useState("A");
+  const [researcherDropTarget, setResearcherDropTarget] = useState(null);
   const [sessionSaved, setSessionSaved] = useState(false);
   const [sessionSaveStatus, setSessionSaveStatus] = useState("");
   const [participantFinished, setParticipantFinished] = useState(false);
@@ -4600,6 +4610,42 @@ export default function App() {
     reader.readAsText(file);
   }
 
+  function isJsonSessionFile(file) {
+    if (!file) return false;
+    const name = String(file.name || "").toLowerCase();
+    return name.endsWith(".json") || file.type === "application/json" || file.type === "text/json";
+  }
+
+  function handleResearcherJsonDragOver(event, target) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (researcherDropTarget !== target) setResearcherDropTarget(target);
+  }
+
+  function handleResearcherJsonDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setResearcherDropTarget(null);
+    }
+  }
+
+  function handleResearcherJsonDrop(event, onFile, label) {
+    event.preventDefault();
+    event.stopPropagation();
+    setResearcherDropTarget(null);
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) {
+      setResearcherStatus(`Drop a ${label} session JSON file.`);
+      return;
+    }
+    if (!isJsonSessionFile(file)) {
+      setResearcherStatus(`Please drop a .json file for ${label}.`);
+      return;
+    }
+    onFile(file);
+  }
+
   async function applyLinkedCaregiverValuesImport(payload) {
     const linked = extractLinkedCaregiverValuesFromSessionJson(payload);
     const targetSessionId = cleanValueText(researcherSessionLookup) || participantSessionId;
@@ -4828,27 +4874,40 @@ export default function App() {
           <section className="researcher-card researcher-workflow-card">
             <h2>Caregiver only — Link Youth values for Phase 2</h2>
             <p className="researcher-subtitle">
-              This is the only Caregiver-specific step. Upload the Youth <strong>Phase 2</strong> log JSON so Phase 2
-              shows that Youth&apos;s identified values and their Tool C drawings. The caregiver&apos;s own Phase 1
-              values stay as My values.
+              Upload the Youth Phase 1 log (after Youth finishes Phase 1) so Caregiver Phase 2 shows Youth values.
+              Phase 2 log is only needed if you also want Youth Tool C drawings.
             </p>
             <div className="researcher-workflow-step">
               <div className="researcher-step-label">Upload Youth session JSON</div>
               <p>
-                Current caregiver ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Prefer the Youth Phase 2
-                download so Tool C images are included.
+                Current caregiver ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Drop the Youth{" "}
+                <code>*-phase1-log.json</code> file as-is (uses Phase 2 selections if present, otherwise Tool A/B
+                identified values).
               </p>
-              <label className="researcher-file-drop">
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={(event) => {
-                    importLinkedYouthValuesFile(event.target.files?.[0]);
-                    event.target.value = "";
-                  }}
-                />
-                Upload Youth JSON file
-              </label>
+              <div
+                className={`researcher-json-dropzone ${researcherDropTarget === "youth" ? "is-dragover" : ""}`}
+                onDragEnter={(event) => handleResearcherJsonDragOver(event, "youth")}
+                onDragOver={(event) => handleResearcherJsonDragOver(event, "youth")}
+                onDragLeave={handleResearcherJsonDragLeave}
+                onDrop={(event) => handleResearcherJsonDrop(event, importLinkedYouthValuesFile, "Youth")}
+              >
+                <p className="researcher-json-dropzone-title">Drag and drop Youth session JSON here</p>
+                <p className="researcher-json-dropzone-hint">
+                  Phase 1 log is enough for values; Phase 2 log also brings Tool C drawings
+                </p>
+                <span className="researcher-json-dropzone-or">or</span>
+                <label className="researcher-file-drop">
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={(event) => {
+                      importLinkedYouthValuesFile(event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                  Choose Youth JSON file
+                </label>
+              </div>
               {(loadedDraft?.linkedYouthValues || []).length > 0 ? (
                 <div className="researcher-value-list">
                   <p className="researcher-draft-summary">
@@ -4875,27 +4934,41 @@ export default function App() {
           <section className="researcher-card researcher-workflow-card">
             <h2>Youth only — Link Caregiver values for Phase 2</h2>
             <p className="researcher-subtitle">
-              Optional. Upload the Caregiver <strong>Phase 2</strong> log JSON so Phase 2 shows that Caregiver&apos;s
-              identified values (and Tool C drawings when available). If you skip this, Youth keeps the predefined
-              default Caregiver values.
+              Optional. Upload the Caregiver Phase 1 log (after Caregiver finishes Phase 1) so Youth Phase 2 shows
+              that Caregiver&apos;s values. Phase 2 log is only needed for Caregiver Tool C drawings. If you skip this,
+              Youth keeps predefined Caregiver defaults.
             </p>
             <div className="researcher-workflow-step">
               <div className="researcher-step-label">Upload Caregiver session JSON</div>
               <p>
-                Current Youth ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Prefer the Caregiver Phase 2
-                download so Tool C images are included.
+                Current Youth ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Drop the Caregiver{" "}
+                <code>*-phase1-log.json</code> file as-is (uses Phase 2 selections if present, otherwise Tool A/B
+                identified values).
               </p>
-              <label className="researcher-file-drop">
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={(event) => {
-                    importLinkedCaregiverValuesFile(event.target.files?.[0]);
-                    event.target.value = "";
-                  }}
-                />
-                Upload Caregiver JSON file
-              </label>
+              <div
+                className={`researcher-json-dropzone ${researcherDropTarget === "caregiver" ? "is-dragover" : ""}`}
+                onDragEnter={(event) => handleResearcherJsonDragOver(event, "caregiver")}
+                onDragOver={(event) => handleResearcherJsonDragOver(event, "caregiver")}
+                onDragLeave={handleResearcherJsonDragLeave}
+                onDrop={(event) => handleResearcherJsonDrop(event, importLinkedCaregiverValuesFile, "Caregiver")}
+              >
+                <p className="researcher-json-dropzone-title">Drag and drop Caregiver session JSON here</p>
+                <p className="researcher-json-dropzone-hint">
+                  Phase 1 log is enough for values; Phase 2 log also brings Tool C drawings
+                </p>
+                <span className="researcher-json-dropzone-or">or</span>
+                <label className="researcher-file-drop">
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={(event) => {
+                      importLinkedCaregiverValuesFile(event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                  Choose Caregiver JSON file
+                </label>
+              </div>
               {(loadedDraft?.linkedCaregiverValues || []).length > 0 ? (
                 <div className="researcher-value-list">
                   <p className="researcher-draft-summary">

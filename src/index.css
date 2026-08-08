@@ -3001,6 +3001,7 @@ canvas.draw-cv {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   width: fit-content;
   padding: 10px 14px;
   border: 0.5px solid #1d9e75;
@@ -3014,10 +3015,53 @@ canvas.draw-cv {
 
 .researcher-file-drop input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  pointer-events: none;
+  cursor: pointer;
+}
+
+.researcher-json-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 560px;
+  padding: 22px 18px;
+  border: 1.5px dashed var(--color-border-secondary);
+  border-radius: 12px;
+  background: #fafafa;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.researcher-json-dropzone.is-dragover {
+  border-color: #1d9e75;
+  background: rgba(29, 158, 117, 0.08);
+}
+
+.researcher-json-dropzone-title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.researcher-json-dropzone-hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.researcher-json-dropzone-or {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .researcher-paste-box {
