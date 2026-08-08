@@ -1697,6 +1697,7 @@ export default function App() {
     if (phase !== 1) setPhase(1);
     setPhaseOneVersion(tool);
     setPhaseOneScreen(targetScreen);
+    setAiSuggestedValues([]);
 
     if (tool === "A") {
       setCurrentQuestion(Math.min(progress.questionIndex ?? 0, QUESTIONS.length - 1));
@@ -1704,9 +1705,15 @@ export default function App() {
         setValues(nextToolAValues.length > 0 ? [...nextToolAValues] : []);
         setValueIcons(nextToolAValues.length > 0 ? [...nextToolAIcons] : []);
         setGoalData({ ...nextToolAGoals });
+      } else {
+        setValues([]);
+        setValueIcons([]);
       }
     } else {
       setVersionBQuestionIndex(Math.min(progress.questionIndex ?? 0, VERSION_B_QUESTIONS.length - 1));
+      // Leaving Tool A working state so B→A persist cannot reuse B texts as Tool A values.
+      setValues([]);
+      setValueIcons([]);
     }
   }
 
@@ -2612,7 +2619,11 @@ export default function App() {
 
   function currentToolAValues() {
     if (toolAValues.length > 0) return toolAValues;
-    if (phaseOneVersion === "A") return values.map((value) => value.trim()).filter(Boolean);
+    // Only use transient `values` while actively editing Tool A values — never while on
+    // Tool A questions after coming from Tool B (that state may still be stale).
+    if (phaseOneVersion === "A" && phaseOneScreen === "values") {
+      return values.map((value) => value.trim()).filter(Boolean);
+    }
     return [];
   }
 
@@ -2757,7 +2768,8 @@ export default function App() {
       aiGeneratedValues: aiSuggestedValues,
       aiGeneratedValuesByTool: {
         ...(readParticipantSessionDraft(participantSessionId)?.aiGeneratedValuesByTool || {}),
-        ...(aiSuggestedValues.length
+        // Only stamp suggestions onto the tool currently showing its values screen.
+        ...(aiSuggestedValues.length && phaseOneScreen === "values"
           ? { [phaseOneVersion]: aiSuggestedValues }
           : {})
       },
@@ -3006,9 +3018,12 @@ export default function App() {
   function applyParticipantSession(session, options = {}) {
     if (!session) return;
     const targetTool = options.tool || session.phaseOne?.currentTool || "A";
+    const byToolMap = session.aiGeneratedValuesByTool;
+    const hasByToolMap =
+      byToolMap && typeof byToolMap === "object" && Object.keys(byToolMap).length > 0;
     const restoredAiValues = (
-      session.aiGeneratedValuesByTool?.[targetTool] ||
-      session.aiGeneratedValues ||
+      (hasByToolMap ? byToolMap[targetTool] : null) ||
+      (!hasByToolMap ? session.aiGeneratedValues : null) ||
       []
     )
       .map(normalizeAiValue)
@@ -3017,8 +3032,6 @@ export default function App() {
     const restoredAIcons = session.toolA?.valueIcons || [];
     const restoredBValues = (session.toolB?.identifiedValues || []).map(cleanValueText).filter(Boolean);
     const restoredBIcons = session.toolB?.valueIcons || [];
-    const activeImportedValues = targetTool === "B" ? restoredBValues : restoredAValues;
-    const activeImportedIcons = targetTool === "B" ? restoredBIcons : restoredAIcons;
     const restoredQuestionPhotos = VERSION_B_QUESTIONS.map((_, index) =>
       restorePhotoFromMetadata(session.toolB?.questions?.[index]?.photo)
     );
@@ -3061,8 +3074,11 @@ export default function App() {
     setAnswers(QUESTIONS.map((_, index) => session.toolA?.questions?.[index]?.answer || ""));
     setVersionBAnswers(VERSION_B_QUESTIONS.map((_, index) => session.toolB?.questions?.[index]?.answer || ""));
     setVersionBPhotos(restoredQuestionPhotos);
-    setValues(activeImportedValues);
-    setValueIcons(activeImportedIcons);
+    // Tool A's working `values` must never be filled from Tool B imports (B→A leak).
+    if (targetTool === "A") {
+      setValues(restoredAValues);
+      setValueIcons(restoredAIcons);
+    }
     setToolAValues(restoredAValues);
     setToolAValueIcons(restoredAIcons);
     setToolAGoalData({ ...GOAL_PLACEHOLDERS, ...(session.toolA?.goal || {}) });
@@ -3385,6 +3401,12 @@ export default function App() {
     setCompletedPhaseOneTools((current) =>
       current.includes(phaseOneVersion) ? current : [...current, phaseOneVersion]
     );
+
+    // Clear shared Tool A working state / AI suggestions so the next tool starts empty
+    // until researcher imports AI values for that specific tool.
+    setValues([]);
+    setValueIcons([]);
+    setAiSuggestedValues([]);
 
     if (otherAlreadyCompleted) {
       goToPhaseOneSummary();
