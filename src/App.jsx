@@ -6750,7 +6750,7 @@ export default function App() {
 
               <div className="shared-picture-card">
                 <div className="shared-picture-header">
-                  <div className="shared-picture-title">Our Shard Values</div>
+                  <div className="shared-picture-title">Our Shared Values</div>
                   {participantFinished ? (
                     <span className="shared-done-status">{sessionSaveStatus || "Done"}</span>
                   ) : (
