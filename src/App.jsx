@@ -1381,12 +1381,86 @@ export default function App() {
   const valueResizeRef = useRef(null);
   const recognitionRef = useRef(null);
   const sessionEventsRef = useRef([]);
+  const lastAppliedAiValuesAtRef = useRef({ A: null, B: null });
 
   function appendSessionEvent(event) {
     sessionEventsRef.current = [
       ...sessionEventsRef.current.slice(-499),
       { at: new Date().toISOString(), ...event }
     ];
+  }
+
+  function getSessionAiValuesForTool(session, tool) {
+    const byToolMap = session?.aiGeneratedValuesByTool;
+    const fromByTool = Array.isArray(byToolMap?.[tool]) ? byToolMap[tool] : null;
+    if (fromByTool?.length) {
+      return fromByTool.map(normalizeAiValue).filter(Boolean);
+    }
+    if (tool === "A") {
+      return (session?.toolA?.identifiedValues || [])
+        .map((text, index) =>
+          normalizeAiValue({
+            text,
+            icon: session?.toolA?.valueIcons?.[index] || getValueIcon(text)
+          })
+        )
+        .filter(Boolean);
+    }
+    return (session?.toolB?.identifiedValues || [])
+      .map((text, index) =>
+        normalizeAiValue({
+          text,
+          icon: session?.toolB?.valueIcons?.[index] || getValueIcon(text)
+        })
+      )
+      .filter(Boolean);
+  }
+
+  function applyImportedAiValuesForTool(session, tool, { force = false } = {}) {
+    if (!session || !["A", "B"].includes(tool)) return false;
+    const aiValues = getSessionAiValuesForTool(session, tool);
+    if (!aiValues.length) return false;
+
+    const updatedAt =
+      session.aiValuesUpdatedAtByTool?.[tool] ||
+      session.updatedAt ||
+      session.exportedAt ||
+      null;
+    const lastApplied = lastAppliedAiValuesAtRef.current[tool];
+    const isNewer = Boolean(updatedAt && (!lastApplied || String(updatedAt) > String(lastApplied)));
+    const localEmpty =
+      tool === "A"
+        ? values.length === 0
+        : !versionBBoardItems.some((item) => item.type === "text" && item.text?.trim());
+
+    if (!force && !localEmpty && !isNewer) return false;
+
+    const importedTexts = aiValues.map((value) => value.text);
+    const importedIcons = aiValues.map((value) => value.icon || getValueIcon(value.text));
+    setAiSuggestedValues(aiValues);
+
+    if (tool === "A") {
+      setValues(importedTexts);
+      setValueIcons(importedIcons);
+      setToolAValues(importedTexts);
+      setToolAValueIcons(importedIcons);
+    } else {
+      setToolBValues(importedTexts);
+      setToolBValueIcons(importedIcons);
+      setVersionBBoardItems((current) => {
+        const imageItems = (Array.isArray(current) ? current : []).filter((item) => item.type === "image");
+        return ensureQuestionPhotosOnVersionBBoard(
+          [...imageItems, ...createVersionBBoardItemsFromValues(importedTexts)],
+          versionBPhotos
+        );
+      });
+    }
+
+    lastAppliedAiValuesAtRef.current = {
+      ...lastAppliedAiValuesAtRef.current,
+      [tool]: updatedAt || new Date().toISOString()
+    };
+    return true;
   }
 
   useEffect(() => {
@@ -1429,8 +1503,9 @@ export default function App() {
     if (!savedDraft) return;
     participantDraftRestoredRef.current = true;
     applyParticipantSession(savedDraft, {
-      phase: savedDraft.phase ?? savedDraft.phaseTwo?.phase ?? 1,
-      screen: savedDraft.phaseOne?.currentScreen || "questions"
+      phase: savedDraft.phase ?? savedDraft.phaseTwo?.phase ?? 1
+      // Do not pass screen from currentScreen — AI imports used to set it to "values".
+      // preferredScreen uses toolProgress / questions-first defaults instead.
     });
   }, [researcherMode]);
 
@@ -1522,19 +1597,10 @@ export default function App() {
         });
       }
 
-      const waitingForAiValues =
-        phase === 1 &&
-        phaseOneScreen === "values" &&
-        ((phaseOneVersion === "A" && values.length === 0) ||
-          (phaseOneVersion === "B" &&
-            !versionBBoardItems.some((item) => item.type === "text" && item.text?.trim())));
-      const toolValues =
-        phaseOneVersion === "B"
-          ? session.toolB?.identifiedValues || []
-          : session.toolA?.identifiedValues || [];
-      if (!Array.isArray(toolValues) || toolValues.length === 0) return;
-      if (!waitingForAiValues) return;
-      applyParticipantSession(session, { tool: phaseOneVersion, screen: "values" });
+      const onValuesScreen = phase === 1 && phaseOneScreen === "values";
+      if (!onValuesScreen) return;
+
+      applyImportedAiValuesForTool(session, phaseOneVersion);
     }
 
     function handleStorage(event) {
@@ -1554,15 +1620,10 @@ export default function App() {
 
     window.addEventListener("storage", handleStorage);
 
-    const waitingForAiValues =
-      phase === 1 &&
-      phaseOneScreen === "values" &&
-      ((phaseOneVersion === "A" && values.length === 0) ||
-        (phaseOneVersion === "B" &&
-          !versionBBoardItems.some((item) => item.type === "text" && item.text?.trim())));
+    const onValuesScreen = phase === 1 && phaseOneScreen === "values";
 
     let pollInterval = null;
-    if (waitingForAiValues) {
+    if (onValuesScreen) {
       pollInterval = setInterval(async () => {
         try {
           const session = await loadParticipantSessionRemote(participantSessionId);
@@ -1578,7 +1639,7 @@ export default function App() {
       channel?.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [participantSessionId, researcherMode, phase, phaseOneScreen, phaseOneVersion, values.length, versionBBoardItems]);
+  }, [participantSessionId, researcherMode, phase, phaseOneScreen, phaseOneVersion, values.length, versionBBoardItems, versionBPhotos]);
 
   const currentQ = QUESTIONS[currentQuestion];
   const currentBQ = VERSION_B_QUESTIONS[versionBQuestionIndex];
@@ -1774,6 +1835,13 @@ export default function App() {
       // Leaving Tool A working state so B→A persist cannot reuse B texts as Tool A values.
       setValues([]);
       setValueIcons([]);
+    }
+
+    if (targetScreen === "values") {
+      window.setTimeout(() => {
+        const draft = readParticipantSessionDraft(participantSessionId);
+        if (draft) applyImportedAiValuesForTool(draft, tool);
+      }, 0);
     }
   }
 
@@ -2401,6 +2469,8 @@ export default function App() {
     setValueIcons([]);
     setPhaseOneScreen("values");
     window.setTimeout(() => {
+      const draft = readParticipantSessionDraft(participantSessionId);
+      if (draft) applyImportedAiValuesForTool(draft, "A", { force: true });
       void syncFullDraftForResearcher();
     }, 0);
   }
@@ -2486,12 +2556,14 @@ export default function App() {
     const initial = seeded.slice(0, VERSION_B_VALUE_SLOTS);
     setValues(initial.filter((text) => text.trim()));
     setValueIcons([]);
-    // Keep the board empty until the researcher imports AI values.
-    // Question photos are added then (not here), so we show "AI is generating..." instead of an image-only canvas.
-    setVersionBBoardItems([]);
+    // Keep value text cards empty until AI import is applied on this screen.
+    // Preserve any question photos already on the board.
+    setVersionBBoardItems((current) => (Array.isArray(current) ? current.filter((item) => item.type === "image") : []));
     setVersionBSelectedBoardItemId(null);
     setPhaseOneScreen("values");
     window.setTimeout(() => {
+      const draft = readParticipantSessionDraft(participantSessionId);
+      if (draft) applyImportedAiValuesForTool(draft, "B", { force: true });
       void syncFullDraftForResearcher();
     }, 0);
   }
@@ -2839,6 +2911,8 @@ export default function App() {
           ? { [phaseOneVersion]: aiSuggestedValues }
           : {})
       },
+      aiValuesUpdatedAtByTool:
+        readParticipantSessionDraft(participantSessionId)?.aiValuesUpdatedAtByTool || {},
       phase2: {
         selectedValues: phase2SelectedValues,
         selectedGoalSources: phase2SelectedGoalSources
@@ -3114,6 +3188,15 @@ export default function App() {
     const restoredQuestionPhotos = VERSION_B_QUESTIONS.map((_, index) =>
       restorePhotoFromMetadata(session.toolB?.questions?.[index]?.photo)
     );
+    const restoredToolProgress = session.phaseOne?.toolProgress || {};
+    const preferredScreen =
+      options.screen ||
+      (restoredToolProgress[targetTool]?.screen === "values" ||
+      restoredToolProgress[targetTool]?.screen === "questions"
+        ? restoredToolProgress[targetTool].screen
+        : session.phaseOne?.currentScreen === "summary"
+          ? "summary"
+          : "questions");
     const rawRestoredBoardItems =
       session.toolB?.boardItems?.length > 0
         ? session.toolB.boardItems.map((item) =>
@@ -3122,14 +3205,18 @@ export default function App() {
               : item
           )
         : [];
+    const boardImageItems = rawRestoredBoardItems.filter((item) => item.type === "image");
     const boardHasIdentifiedText = rawRestoredBoardItems.some(
       (item) => item.type === "text" && item.text?.trim()
     );
-    // Prefer board text when present; otherwise rebuild from identified values.
-    // Image-only boards (question photos before AI import) must not skip the waiting state.
-    const restoredBoardItems = boardHasIdentifiedText
-      ? rawRestoredBoardItems
-      : createVersionBBoardItemsFromValues(restoredBValues);
+    // Only restore/rebuild value text cards when the user is actually on the values screen.
+    // Otherwise keep photo cards only so Tool B questions are not skipped.
+    const restoredBoardItems =
+      preferredScreen === "values"
+        ? boardHasIdentifiedText
+          ? rawRestoredBoardItems
+          : createVersionBBoardItemsFromValues(restoredBValues)
+        : boardImageItems;
     const sessionId = cleanValueText(session.sessionId || researcherSessionLookup || participantSessionId);
     setParticipantSessionId(sessionId);
     setResearcherSessionLookup(sessionId);
@@ -3153,10 +3240,14 @@ export default function App() {
     setAnswers(QUESTIONS.map((_, index) => session.toolA?.questions?.[index]?.answer || ""));
     setVersionBAnswers(VERSION_B_QUESTIONS.map((_, index) => session.toolB?.questions?.[index]?.answer || ""));
     setVersionBPhotos(restoredQuestionPhotos);
-    // Tool A's working `values` must never be filled from Tool B imports (B→A leak).
-    if (targetTool === "A") {
+    // Tool A's working `values` must never be filled from Tool B imports (B→A leak),
+    // and should stay empty until the participant reaches the values screen.
+    if (targetTool === "A" && preferredScreen === "values") {
       setValues(restoredAValues);
       setValueIcons(restoredAIcons);
+    } else {
+      setValues([]);
+      setValueIcons([]);
     }
     setToolAValues(restoredAValues);
     setToolAValueIcons(restoredAIcons);
@@ -3166,31 +3257,30 @@ export default function App() {
     setVersionBBoardItems(ensureQuestionPhotosOnVersionBBoard(restoredBoardItems, restoredQuestionPhotos));
     setVersionBGoalShort(session.toolB?.goals?.shortTerm || "");
     setVersionBGoalLong(session.toolB?.goals?.longTerm || "");
-    setAiSuggestedValues(restoredAiValues);
+    setAiSuggestedValues(preferredScreen === "values" ? restoredAiValues : []);
     setPhase2SelectedValues(session.phase2?.selectedValues || []);
     setPhase2SelectedGoalSources(session.phase2?.selectedGoalSources || ["A", "B"]);
     const restoredCompletedTools = Array.isArray(session.phaseOne?.completedTools)
       ? session.phaseOne.completedTools
-      : ["A", "B"];
-    const restoredToolProgress = session.phaseOne?.toolProgress || {};
+      : [];
     const restoredCurrentQuestionIndex = Math.max(0, Number(session.phaseOne?.currentQuestionIndex ?? 0) || 0);
     setCompletedPhaseOneTools(restoredCompletedTools);
     setParticipantIntroComplete(true);
     setPhase(options.phase ?? session.phase ?? session.phaseTwo?.phase ?? 1);
     setPhaseOneVersion(targetTool);
+    // Prefer explicit toolProgress. Do not infer "values" just because AI identifiedValues exist.
+    const screenForTool = (tool) => {
+      const saved = restoredToolProgress[tool]?.screen;
+      if (saved === "values" || saved === "questions") return saved;
+      return "questions";
+    };
     setPhaseOneToolProgress({
       A: {
-        screen: restoredToolProgress.A?.screen ||
-          (session.toolA?.identifiedValues?.length || restoredCompletedTools.includes("A") ? "values" : "questions"),
+        screen: screenForTool("A"),
         questionIndex: restoredToolProgress.A?.questionIndex ?? (targetTool === "A" ? restoredCurrentQuestionIndex : 0)
       },
       B: {
-        screen: restoredToolProgress.B?.screen ||
-          (session.toolB?.identifiedValues?.length ||
-          session.toolB?.boardItems?.length ||
-          restoredCompletedTools.includes("B")
-            ? "values"
-            : "questions"),
+        screen: screenForTool("B"),
         questionIndex: restoredToolProgress.B?.questionIndex ?? (targetTool === "B" ? restoredCurrentQuestionIndex : 0)
       }
     });
@@ -3199,7 +3289,17 @@ export default function App() {
     } else {
       setVersionBQuestionIndex(Math.min(restoredCurrentQuestionIndex, VERSION_B_QUESTIONS.length - 1));
     }
-    setPhaseOneScreen(options.screen || session.phaseOne?.currentScreen || "summary");
+    setPhaseOneScreen(preferredScreen);
+    if (session.aiValuesUpdatedAtByTool) {
+      lastAppliedAiValuesAtRef.current = {
+        A: null,
+        B: null
+      };
+    }
+    // If restoring onto the values screen, fill from AI import without requiring a second sync.
+    if (preferredScreen === "values") {
+      applyImportedAiValuesForTool(session, targetTool, { force: true });
+    }
     const restoredSelectedValues = session.phase2?.selectedValues || [];
     setDrawValues(restoredSelectedValues);
     setDrawSettings(makeDefaultSettings(restoredSelectedValues.length));
@@ -3315,49 +3415,58 @@ export default function App() {
     }
     const importedTexts = normalized.values.map((value) => value.text);
     const importedIcons = normalized.values.map((value) => value.icon || getValueIcon(value.text));
-    const draftForPhotos = readParticipantSessionDraft(targetSessionId);
-    const photosFromDraft = VERSION_B_QUESTIONS.map((_, index) =>
-      restorePhotoFromMetadata(draftForPhotos?.toolB?.questions?.[index]?.photo)
-    );
-    const questionPhotosForBoard = versionBPhotos.some((photo) => photo?.url || photo?.dataUrl)
-      ? versionBPhotos
-      : photosFromDraft;
-    const importedBoardItems = ensureQuestionPhotosOnVersionBBoard(
-      createVersionBBoardItemsFromValues(importedTexts),
-      questionPhotosForBoard
-    );
+    const importedAt = new Date().toISOString();
     setParticipantSessionId(targetSessionId);
     setResearcherSessionLookup(targetSessionId);
     setAiSuggestedValues(normalized.values);
+    // Researcher preview only — do not mark tools complete or jump participant navigation.
     if (targetTool === "A") {
-      setValues(importedTexts);
-      setValueIcons(importedIcons);
       setToolAValues(importedTexts);
       setToolAValueIcons(importedIcons);
+      if (phaseOneVersion === "A" && phaseOneScreen === "values") {
+        setValues(importedTexts);
+        setValueIcons(importedIcons);
+      }
     } else {
       setToolBValues(importedTexts);
       setToolBValueIcons(importedIcons);
-      setVersionBBoardItems(importedBoardItems);
+      if (phaseOneVersion === "B" && phaseOneScreen === "values") {
+        setVersionBBoardItems((current) => {
+          const imageItems = (Array.isArray(current) ? current : []).filter((item) => item.type === "image");
+          return ensureQuestionPhotosOnVersionBBoard(
+            [...imageItems, ...createVersionBBoardItemsFromValues(importedTexts)],
+            versionBPhotos
+          );
+        });
+      }
     }
-    setCompletedPhaseOneTools((current) => (current.includes(targetTool) ? current : [...current, targetTool]));
     const baseSession = readParticipantSessionDraft(targetSessionId) || buildParticipantSessionExport();
     const aiGeneratedValuesByTool = {
       ...(baseSession.aiGeneratedValuesByTool || {}),
       [targetTool]: normalized.values
+    };
+    const aiValuesUpdatedAtByTool = {
+      ...(baseSession.aiValuesUpdatedAtByTool || {}),
+      [targetTool]: importedAt
     };
     appendSessionEvent({ type: "ai_values_imported", tool: targetTool, count: normalized.values.length });
     const importedSession = {
       ...baseSession,
       schema: PARTICIPANT_EXPORT_SCHEMA,
       sessionId: targetSessionId,
+      // Preserve participant navigation/progress — AI import is data-only.
       phaseOne: {
-        ...baseSession.phaseOne,
-        completedTools: Array.from(new Set([...(baseSession.phaseOne?.completedTools || []), targetTool])),
-        currentTool: targetTool,
-        currentScreen: "values"
+        ...(baseSession.phaseOne || {}),
+        completedTools: Array.isArray(baseSession.phaseOne?.completedTools)
+          ? baseSession.phaseOne.completedTools
+          : [],
+        currentTool: baseSession.phaseOne?.currentTool || phaseOneVersion,
+        currentScreen: baseSession.phaseOne?.currentScreen || phaseOneScreen,
+        toolProgress: baseSession.phaseOne?.toolProgress || phaseOneToolProgress
       },
       aiGeneratedValues: normalized.values,
       aiGeneratedValuesByTool,
+      aiValuesUpdatedAtByTool,
       toolA:
         targetTool === "A"
           ? {
@@ -3371,8 +3480,8 @@ export default function App() {
           ? {
               ...baseSession.toolB,
               identifiedValues: importedTexts,
-              valueIcons: importedIcons,
-              boardItems: importedBoardItems
+              valueIcons: importedIcons
+              // Do not overwrite boardItems here — participant applies texts on the values screen.
             }
           : baseSession.toolB,
       phase2: {
@@ -3381,6 +3490,7 @@ export default function App() {
         selectedGoalSources: baseSession.phase2?.selectedGoalSources || phase2SelectedGoalSources
       },
       events: sessionEventsRef.current,
+      updatedAt: importedAt,
       sessionStatus: "in_progress"
     };
     writeParticipantSessionDraft(importedSession);
@@ -3389,7 +3499,15 @@ export default function App() {
     } catch {
       // Participant tab on the same device can still receive the draft via BroadcastChannel.
     }
-    setResearcherStatus(`Updated participant values for Tool ${targetTool} (${normalized.values.length} values).`);
+    if (phaseOneVersion === targetTool && phaseOneScreen === "values") {
+      lastAppliedAiValuesAtRef.current = {
+        ...lastAppliedAiValuesAtRef.current,
+        [targetTool]: importedAt
+      };
+    }
+    setResearcherStatus(
+      `Saved ${normalized.values.length} AI value${normalized.values.length === 1 ? "" : "s"} for Tool ${targetTool}. The participant will see them on that tool’s values screen.`
+    );
   }
 
   function importAiValuesFile(file) {
