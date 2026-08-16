@@ -238,6 +238,14 @@ const PARTICIPANT_SESSION_DRAFT_PREFIX = "seattle-children-session:";
 const PARTICIPANT_SESSION_SYNC_CHANNEL = "seattle-children-session-sync";
 const PARTICIPANT_EXPORT_SCHEMA = PARTICIPANT_EXPORT_SCHEMA_V2;
 const AI_VALUES_IMPORT_SCHEMA = "seattle-childrens.ai-values.v1";
+const AI_VALUE_DOMAIN_TAGS = [
+  "Principles",
+  "Relationships",
+  "Emotions",
+  "Activities",
+  "Abilities",
+  "Possessions"
+];
 const PARTICIPANT_ROLES = ["youth", "caregiver"];
 
 function normalizeParticipantRole(role) {
@@ -556,6 +564,21 @@ async function resolveParticipantDraft(sessionId) {
   return merged;
 }
 
+function normalizeAiDomainTag(value) {
+  const raw = cleanValueText(value?.domainTag || value?.domain || value?.tag);
+  if (!raw) return "";
+  const matched = AI_VALUE_DOMAIN_TAGS.find((tag) => tag.toLowerCase() === raw.toLowerCase());
+  return matched || raw;
+}
+
+function normalizeAiConfidence(value) {
+  const raw = value?.confidence;
+  if (raw == null || raw === "") return null;
+  const number = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.min(1, number));
+}
+
 function normalizeAiValue(value, index) {
   const text = typeof value === "string" ? value : value?.text || value?.label || value?.value;
   const cleanText = cleanValueText(text);
@@ -565,7 +588,8 @@ function normalizeAiValue(value, index) {
     text: cleanText,
     icon: value?.icon || getValueIcon(cleanText),
     rationale: cleanValueText(value?.rationale || value?.reason || ""),
-    confidence: value?.confidence ?? null,
+    domainTag: normalizeAiDomainTag(value),
+    confidence: normalizeAiConfidence(value),
     source: "AI"
   };
 }
@@ -3018,7 +3042,7 @@ export default function App() {
       tool: targetTool,
       exportedAt: new Date().toISOString(),
       instructions:
-        "Use only this tool's participant responses to elicit values. Return JSON with schema seattle-childrens.ai-values.v1, the same sessionId, this tool, and a values array.",
+        "Use only this tool's participant responses to elicit values. Return JSON with schema seattle-childrens.ai-values.v1, the same sessionId, generatedAt, and a values array of {text, rationale, domainTag, confidence}. domainTag must be one of Principles, Relationships, Emotions, Activities, Abilities, Possessions. confidence must be a float from 0.0 to 1.0.",
       responses: toolPayload?.questions || [],
       goals: toolPayload?.goals || toolPayload?.goal || {},
       boardItems: targetTool === "B" ? toolPayload?.boardItems || [] : undefined,
@@ -5324,7 +5348,7 @@ export default function App() {
                 <textarea
                   className="researcher-json-paste"
                   value={researcherJsonPaste}
-                  placeholder='{"sessionId":"P1","tool":"A","values":[{"text":"Staying healthy and strong","rationale":"..."}]}'
+                  placeholder='{"schema":"seattle-childrens.ai-values.v1","sessionId":"P1","generatedAt":"2026-08-16T12:00:00.000Z","values":[{"text":"Staying healthy and strong","rationale":"...","domainTag":"Principles","confidence":0.86}]}'
                   onChange={(event) => setResearcherJsonPaste(event.target.value)}
                 />
               </label>
@@ -5338,6 +5362,10 @@ export default function App() {
                   <div className="researcher-value-chip" key={value.id}>
                     <span>{value.icon || getValueIcon(value.text)}</span>
                     <strong>{value.text}</strong>
+                    {value.domainTag ? <span>{value.domainTag}</span> : null}
+                    {typeof value.confidence === "number" ? (
+                      <span>{Math.round(value.confidence * 100)}%</span>
+                    ) : null}
                   </div>
                 ))}
               </div>
