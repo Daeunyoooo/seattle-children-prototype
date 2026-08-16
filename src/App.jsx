@@ -52,6 +52,22 @@ const QUESTIONS = [
   }
 ];
 
+const CAREGIVER_QUESTIONS = QUESTIONS.map((question) => {
+  if (question.num === "Q4") {
+    return {
+      ...question,
+      hints: ["What do you think a perfect day might look like in the future?"]
+    };
+  }
+  if (question.num === "Q6") {
+    return {
+      ...question,
+      text: "Is there anything you wish you could talk more about with your child or clinicians?"
+    };
+  }
+  return question;
+});
+
 const VERSION_B_QUESTIONS = [
   {
     num: "Q1",
@@ -1665,7 +1681,8 @@ export default function App() {
     };
   }, [participantSessionId, researcherMode, phase, phaseOneScreen, phaseOneVersion, values.length, versionBBoardItems, versionBPhotos]);
 
-  const currentQ = QUESTIONS[currentQuestion];
+  const currentToolAQuestions = participantRole === "caregiver" ? CAREGIVER_QUESTIONS : QUESTIONS;
+  const currentQ = currentToolAQuestions[currentQuestion];
   const currentBQ = VERSION_B_QUESTIONS[versionBQuestionIndex];
   const versionBSelectedBoardItem = versionBBoardItems.find((item) => item.id === versionBSelectedBoardItemId) ?? null;
   const versionBSelectedBoardImageUrl =
@@ -2485,7 +2502,7 @@ export default function App() {
 
   function nextQuestion() {
     stopSpeechRecognition();
-    if (currentQuestion < QUESTIONS.length - 1) {
+    if (currentQuestion < currentToolAQuestions.length - 1) {
       setCurrentQuestion((current) => current + 1);
       return;
     }
@@ -2886,7 +2903,7 @@ export default function App() {
         toolProgress: phaseOneToolProgress
       },
       toolA: {
-        questions: QUESTIONS.map((question, index) => ({
+        questions: currentToolAQuestions.map((question, index) => ({
           num: question.num,
           text: question.text,
           hints: question.hints,
@@ -5741,7 +5758,7 @@ export default function App() {
             {phaseOneVersion === "A" ? (
               <>
                 <div className="progress-bar">
-                  {QUESTIONS.map((question, index) => (
+                  {currentToolAQuestions.map((question, index) => (
                     <div
                       className={`dot ${index < currentQuestion ? "done" : ""} ${
                         index === currentQuestion ? "current" : ""
@@ -5750,7 +5767,7 @@ export default function App() {
                     />
                   ))}
                   <span className="prog-label">
-                    {currentQuestion + 1} / {QUESTIONS.length}
+                    {currentQuestion + 1} / {currentToolAQuestions.length}
                   </span>
                 </div>
 
@@ -5797,7 +5814,7 @@ export default function App() {
                     ← Back
                   </button>
                   <button className="primary" type="button" onClick={nextQuestion}>
-                    {currentQuestion === QUESTIONS.length - 1 ? "Done — See my values ✓" : "Next →"}
+                    {currentQuestion === currentToolAQuestions.length - 1 ? "Done — See my values ✓" : "Next →"}
                   </button>
                 </div>
               </>
@@ -6711,7 +6728,7 @@ export default function App() {
                       <div className="legend-thumb empty-thumb" aria-hidden="true" />
                     )}
                     <div className="legend-label">value {index + 1}</div>
-                    <div className="legend-value-name">{value.slice(0, 20)}</div>
+                    <div className="legend-value-name">{value}</div>
                   </div>
                 ))}
               </div>

@@ -2489,7 +2489,7 @@ canvas.draw-cv {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 2rem;
+  gap: 1.25rem 1.5rem;
 }
 
 .legend-item {
@@ -2497,6 +2497,8 @@ canvas.draw-cv {
   flex-direction: column;
   align-items: center;
   gap: 6px;
+  max-width: 160px;
+  min-width: 0;
 }
 
 .legend-thumb {
@@ -2518,11 +2520,14 @@ canvas.draw-cv {
 }
 
 .legend-value-name {
-  max-width: 90px;
+  max-width: 160px;
   color: var(--color-text-tertiary);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   text-align: center;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .share-row {
