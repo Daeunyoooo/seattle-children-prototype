@@ -6658,27 +6658,6 @@ export default function App() {
               </div>
             </div>
 
-            <div className="share-row">
-              <label className="share-check">
-                <input
-                  type="checkbox"
-                  checked={shareTargets.caregiver}
-                  onChange={() => toggleShareTarget("caregiver")}
-                />
-                Share with your caregiver
-              </label>
-              <label className="share-check">
-                <input
-                  type="checkbox"
-                  checked={shareTargets.clinician}
-                  onChange={() => toggleShareTarget("clinician")}
-                />
-                Share with your clinician
-              </label>
-              <button className="primary" type="button">
-                Share
-              </button>
-            </div>
             <div className="nav-row">
               <button className="redraw-button" type="button" onClick={() => setPhaseTwoScreen("shapes")}>
                 ← Redraw
