@@ -324,6 +324,10 @@ button:disabled {
   pointer-events: none;
 }
 
+.phase2-tool-step-indicator {
+  justify-content: center;
+}
+
 .phase1-version-buttons {
   display: flex;
   flex-wrap: wrap;

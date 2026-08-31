@@ -5757,7 +5757,8 @@ export default function App() {
         ) : null}
         {phase === 2 ? (
           <div className="phase1-version-under-tab phase2-tool-under-tab">
-            <div className="phase1-step-indicator" role="tablist" aria-label="Phase 2 tools">
+            <div className="phase1-version-under-tab-spacer" aria-hidden="true" />
+            <div className="phase1-step-indicator phase2-tool-step-indicator" role="tablist" aria-label="Phase 2 tools">
               {["A", "B", "C"].map((tool, index) => (
                 <span className="phase1-step-group" key={tool}>
                   {index > 0 ? (
@@ -5777,7 +5778,6 @@ export default function App() {
                 </span>
               ))}
             </div>
-            <div className="phase1-version-under-tab-spacer" aria-hidden="true" />
           </div>
         ) : null}
       </div>
