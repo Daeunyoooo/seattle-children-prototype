@@ -44,11 +44,6 @@ const QUESTIONS = [
     num: "Q5",
     text: "What about your future worries you the most?",
     hints: ["How do you think things might be different if you didn't have to worry about that?"]
-  },
-  {
-    num: "Q6",
-    text: "Is there anything you wish you could talk more about with your parents or clinicians?",
-    hints: []
   }
 ];
 
@@ -57,12 +52,6 @@ const CAREGIVER_QUESTIONS = QUESTIONS.map((question) => {
     return {
       ...question,
       hints: ["What do you think a perfect day might look like in the future?"]
-    };
-  }
-  if (question.num === "Q6") {
-    return {
-      ...question,
-      text: "Is there anything you wish you could talk more about with your child or clinicians?"
     };
   }
   return question;
@@ -5870,42 +5859,19 @@ export default function App() {
 
                   <p className="version-b-photo-prompt">
                     {versionBQuestionIndex === 0
-                      ? "Add a picture or drawing that represents your hopeful future."
-                      : "Add a picture or drawing that represents your worried future."}
+                      ? "Choose a picture from the library that represents your hopeful future."
+                      : "Choose a picture from the library that represents your worried future."}
                   </p>
 
-                  <div className="photo-square-field">
-                    <label
-                      className={`photo-square-drop ${
-                        versionBPhotos[versionBQuestionIndex] ? "has-photo" : ""
-                      } ${versionBPhotoPanel ? "is-photo-active" : ""}`}
-                    >
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="photo-square-input"
-                        onChange={(event) => {
-                          updateVersionBPhoto(versionBQuestionIndex, event.target.files?.[0]);
-                          event.target.value = "";
-                        }}
-                      />
-                      {versionBPhotos[versionBQuestionIndex] ? (
-                        <>
-                          <img
-                            src={versionBPhotos[versionBQuestionIndex].url}
-                            alt=""
-                            className="photo-square-img"
-                          />
-                          <span className="photo-square-replace-hint">Tap to change photo</span>
-                        </>
-                      ) : (
-                        <div className="photo-square-placeholder" aria-hidden="true">
-                          <span className="photo-square-plus">+</span>
-                          <span className="photo-square-label">Upload photo</span>
-                        </div>
-                      )}
-                    </label>
-                    {versionBPhotos[versionBQuestionIndex] ? (
+                  {versionBPhotos[versionBQuestionIndex] ? (
+                    <div className="photo-square-field">
+                      <div className="photo-square-drop has-photo">
+                        <img
+                          src={versionBPhotos[versionBQuestionIndex].url}
+                          alt=""
+                          className="photo-square-img"
+                        />
+                      </div>
                       <button
                         type="button"
                         className="photo-square-remove"
@@ -5914,127 +5880,26 @@ export default function App() {
                       >
                         ×
                       </button>
-                    ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="version-b-photo-panel version-b-photo-panel--library-always">
+                    <div className="version-b-library-grid">
+                      {versionBQuestionLibrary.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`version-b-library-item ${
+                            versionBPhotos[versionBQuestionIndex]?.url === item.url ? "is-selected" : ""
+                          }`}
+                          aria-label={`Use ${item.name}`}
+                          onClick={() => selectVersionBQuestionLibraryImage(item)}
+                        >
+                          <img src={item.url} alt="" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
-
-                  <div className="version-b-photo-actions">
-                    <button
-                      type="button"
-                      className={`version-b-photo-action ${versionBPhotoPanel === "upload" ? "is-active" : ""}`}
-                      onClick={() => toggleVersionBPhotoPanel("upload")}
-                    >
-                      Upload photo
-                    </button>
-                    <button
-                      type="button"
-                      className={`version-b-photo-action ${versionBPhotoPanel === "draw" ? "is-active" : ""}`}
-                      onClick={() => toggleVersionBPhotoPanel("draw")}
-                    >
-                      Draw on canvas
-                    </button>
-                    <button
-                      type="button"
-                      className={`version-b-photo-action ${versionBPhotoPanel === "library" ? "is-active" : ""}`}
-                      onClick={() => toggleVersionBPhotoPanel("library")}
-                    >
-                      Image library
-                    </button>
-                  </div>
-
-                  {versionBPhotoPanel === "upload" ? (
-                    <div className="version-b-photo-panel">
-                      <input
-                        ref={versionBUploadInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="version-b-upload-input"
-                        onChange={(event) => {
-                          updateVersionBPhoto(versionBQuestionIndex, event.target.files?.[0]);
-                          event.target.value = "";
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="primary version-b-upload-button"
-                        onClick={() => versionBUploadInputRef.current?.click()}
-                      >
-                        Choose photo from device
-                      </button>
-                    </div>
-                  ) : null}
-
-                  {versionBPhotoPanel === "draw" ? (
-                    <div className="version-b-photo-panel">
-                      {renderDrawingCanvasCard({
-                        index: versionBQuestionIndex,
-                        setting: versionBDrawSettings[versionBQuestionIndex] || {
-                          tool: "free",
-                          colorIndex: 0,
-                          brushSize: 12,
-                          sticker: STICKER_OPTIONS[0]
-                        },
-                        subtitle: "Draw a picture for your answer.",
-                        stickerSeed: versionBQuestionStickerSeed(versionBQuestionIndex),
-                        emojiPickerIndex: versionBDrawEmojiPickerIndex,
-                        setEmojiPickerIndex: setVersionBDrawEmojiPickerIndex,
-                        onUpdateSetting: (patch) => updateVersionBDrawSetting(versionBQuestionIndex, patch),
-                        onSelectSticker: (emoji) => selectVersionBDrawSticker(versionBQuestionIndex, emoji),
-                        onClear: () => clearVersionBDrawCanvas(versionBQuestionIndex),
-                        canvasRefAssign: (element) => {
-                          versionBDrawCanvasRefs.current[versionBQuestionIndex] = element;
-                        },
-                        onDrawStart: (event, useTouch = false) =>
-                          handleDrawStart(versionBQuestionIndex, event, useTouch, {
-                            canvasStatesRef: versionBCanvasStatesRef,
-                            drawStartsRef: versionBDrawStartsRef,
-                            drawInteractRef: versionBDrawInteractRef,
-                            snapshotOnEnd: false
-                          }),
-                        onDrawMove: (event, useTouch = false) =>
-                          handleDrawMove(versionBQuestionIndex, event, useTouch, {
-                            canvasStatesRef: versionBCanvasStatesRef,
-                            drawStartsRef: versionBDrawStartsRef,
-                            drawInteractRef: versionBDrawInteractRef
-                          }),
-                        onDrawEnd: (event, useTouch = false) =>
-                          handleDrawEnd(versionBQuestionIndex, event, useTouch, {
-                            canvasStatesRef: versionBCanvasStatesRef,
-                            drawStartsRef: versionBDrawStartsRef,
-                            drawInteractRef: versionBDrawInteractRef,
-                            snapshotOnEnd: false
-                          }),
-                        canvasAction: (
-                          <button
-                            type="button"
-                            className="version-b-save-drawing"
-                            onClick={() => saveVersionBDrawingFromCanvas(versionBQuestionIndex)}
-                          >
-                            Use this Drawing
-                          </button>
-                        )
-                      })}
-                    </div>
-                  ) : null}
-
-                  {versionBPhotoPanel === "library" ? (
-                    <div className="version-b-photo-panel">
-                      <div className="version-b-library-grid">
-                        {versionBQuestionLibrary.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className={`version-b-library-item ${
-                              versionBPhotos[versionBQuestionIndex]?.url === item.url ? "is-selected" : ""
-                            }`}
-                            aria-label={`Use ${item.name}`}
-                            onClick={() => selectVersionBQuestionLibraryImage(item)}
-                          >
-                            <img src={item.url} alt="" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
 
                 <div className="nav-row">
@@ -6245,12 +6110,6 @@ export default function App() {
                       Try to include: 🎯 what you want to do, 📏 how you’ll track progress, 💜 why it matters to you, and ⏰
                       when you hope to achieve it.
                     </div>
-                    <textarea
-                      className="goal-main-input"
-                      value={goalData.summary}
-                      aria-label="Value-guided goal"
-                      onChange={(event) => updateGoalData("summary", event.target.value)}
-                    />
                     <div className="goal-detail-box" aria-label="Goal details">
                       {GOAL_PROMPTS.map((prompt) => (
                         <label className="goal-detail-row" key={prompt.field}>
@@ -6480,6 +6339,10 @@ export default function App() {
                 ← Back to tools
               </button>
             </div>
+            <p className="phase2-tool-intro">
+              This tool helps you see what is important to you and to other people. The Venn diagram shows which
+              values you share and which values are different.
+            </p>
             <ToolAVennDiagram
               youthValues={phase2YouthValueItems}
               caregiverValues={phase2CaregiverValueItems}
@@ -6493,6 +6356,10 @@ export default function App() {
                 ← Back to tools
               </button>
             </div>
+            <p className="phase2-tool-intro phase2-tool-intro--wide">
+              This puzzle shows what is important to each person. Each puzzle piece represents a value that you or
+              someone else created. You can move the puzzle pieces around while talking about them together.
+            </p>
             <ToolBPuzzle
               embedded
               youthValues={phase2YouthValueItems}
@@ -6501,6 +6368,11 @@ export default function App() {
           </div>
         ) : phaseTwoScreen === "shapes" ? (
           <div className="screen active">
+            <p className="phase2-tool-intro">
+              This canvas helps you show what is important to you through art. You can draw or choose shapes to
+              represent your values. You can also learn what is important to other people by creating one shared
+              drawing together.
+            </p>
             <div className="section-sub">
               If each of your values had a shape and color, what would it be? Draw freely or pick a shape.
             </div>

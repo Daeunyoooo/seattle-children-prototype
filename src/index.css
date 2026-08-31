@@ -2321,6 +2321,24 @@ textarea:focus {
   margin: 0 auto 12px;
 }
 
+.phase2-tool-intro {
+  max-width: 1100px;
+  margin: 0 auto 16px;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.phase2-tool-intro--wide {
+  max-width: none;
+  padding-inline: 16px;
+}
+
+.phase2-embedded-tool--wide .phase2-tool-nav {
+  padding-inline: 16px;
+  max-width: none;
+}
+
 canvas.draw-cv {
   display: block;
   width: 100%;
