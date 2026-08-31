@@ -23,7 +23,7 @@ const QUESTIONS = [
   {
     num: "Q1",
     text: "Think of a recent favorite memory. It can be something big or really small.",
-    hints: ["What happened at that moment?", "Why was it meaningful or important to you?"]
+    hints: ["Why was it meaningful or important to you?"]
   },
   {
     num: "Q2",
@@ -5863,15 +5863,31 @@ export default function App() {
                       : "Choose a picture from the library that represents your worried future."}
                   </p>
 
-                  {versionBPhotos[versionBQuestionIndex] ? (
-                    <div className="photo-square-field">
-                      <div className="photo-square-drop has-photo">
+                  <div className="photo-square-field">
+                    <div
+                      className={`photo-square-drop ${
+                        versionBPhotos[versionBQuestionIndex] ? "has-photo" : ""
+                      }`}
+                      aria-label={
+                        versionBPhotos[versionBQuestionIndex]
+                          ? "Selected photo from library"
+                          : "Selected photo preview"
+                      }
+                    >
+                      {versionBPhotos[versionBQuestionIndex] ? (
                         <img
                           src={versionBPhotos[versionBQuestionIndex].url}
                           alt=""
                           className="photo-square-img"
                         />
-                      </div>
+                      ) : (
+                        <div className="photo-square-placeholder" aria-hidden="true">
+                          <span className="photo-square-plus">+</span>
+                          <span className="photo-square-label">Choose from library</span>
+                        </div>
+                      )}
+                    </div>
+                    {versionBPhotos[versionBQuestionIndex] ? (
                       <button
                         type="button"
                         className="photo-square-remove"
@@ -5880,8 +5896,8 @@ export default function App() {
                       >
                         ×
                       </button>
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
 
                   <div className="version-b-photo-panel version-b-photo-panel--library-always">
                     <div className="version-b-library-grid">
