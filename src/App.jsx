@@ -3684,6 +3684,27 @@ export default function App() {
     setPhaseTwoScreen("tool-b");
   }
 
+  function getPhaseTwoActiveTool() {
+    if (phaseTwoScreen === "tool-a") return "A";
+    if (phaseTwoScreen === "tool-b") return "B";
+    if (phaseTwoScreen === "shapes" || phaseTwoScreen === "composite" || phaseTwoScreen === "stakeholders") {
+      return "C";
+    }
+    return null;
+  }
+
+  function switchPhaseTwoTool(tool) {
+    if (tool === "A") {
+      startToolAVennDiagram();
+      return;
+    }
+    if (tool === "B") {
+      startToolBPuzzle();
+      return;
+    }
+    startArtAndDrawingTool();
+  }
+
   function resolveDrawStore(drawStore) {
     return (
       drawStore || {
@@ -5734,6 +5755,31 @@ export default function App() {
             <div className="phase1-version-under-tab-spacer" aria-hidden="true" />
           </div>
         ) : null}
+        {phase === 2 ? (
+          <div className="phase1-version-under-tab phase2-tool-under-tab">
+            <div className="phase1-step-indicator" role="tablist" aria-label="Phase 2 tools">
+              {["A", "B", "C"].map((tool, index) => (
+                <span className="phase1-step-group" key={tool}>
+                  {index > 0 ? (
+                    <span className="phase1-step-sep" aria-hidden="true">
+                      ·
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={getPhaseTwoActiveTool() === tool}
+                    className={`phase1-step ${getPhaseTwoActiveTool() === tool ? "active" : ""}`}
+                    onClick={() => switchPhaseTwoTool(tool)}
+                  >
+                    Tool {tool}
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="phase1-version-under-tab-spacer" aria-hidden="true" />
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -6350,11 +6396,6 @@ export default function App() {
           </div>
         ) : phaseTwoScreen === "tool-a" ? (
           <div className="screen active phase2-embedded-tool">
-            <div className="phase2-tool-nav">
-              <button type="button" onClick={() => setPhaseTwoScreen("tools")}>
-                ← Back to tools
-              </button>
-            </div>
             <p className="phase2-tool-intro">
               This tool helps you see what is important to you and to other people. The Venn diagram shows which
               values you share and which values are different.
@@ -6367,11 +6408,6 @@ export default function App() {
           </div>
         ) : phaseTwoScreen === "tool-b" ? (
           <div className="screen active phase2-embedded-tool phase2-embedded-tool--wide">
-            <div className="phase2-tool-nav">
-              <button type="button" onClick={() => setPhaseTwoScreen("tools")}>
-                ← Back to tools
-              </button>
-            </div>
             <p className="phase2-tool-intro phase2-tool-intro--wide">
               This puzzle shows what is important to each person. Each puzzle piece represents a value that you or
               someone else created. You can move the puzzle pieces around while talking about them together.
