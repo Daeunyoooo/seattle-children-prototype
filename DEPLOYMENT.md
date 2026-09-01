@@ -47,9 +47,9 @@ Without env vars, behavior stays localStorage-only (same as GitHub Pages).
 
 1. Device A: open the Vercel URL, enter a participant ID, complete some answers (autosave). For Tool B, draw or upload a photo and wait for autosave.
 2. Device B: open `/researcher`, enter the same ID, **Load draft**.
-3. Confirm Phase 1 Tool B photo thumbnails and Phase 2 Tool C images appear.
+3. Confirm Part 1 Tool B photo thumbnails and Part 2 Tool C images appear.
 4. In Supabase: **Storage → session-assets** should show `.png` files; Table Editor `payload` should have `storageUrl` instead of long base64 `dataUrl`/`pngDataUrl`.
-5. Download Phase 1 / Phase 2 JSON to confirm cross-device export.
+5. Download Part 1 / Part 2 JSON to confirm cross-device export.
 
 ## Related
 

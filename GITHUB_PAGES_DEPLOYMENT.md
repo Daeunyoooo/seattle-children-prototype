@@ -8,7 +8,7 @@ For cross-device save/load on Vercel + Supabase, see [`DEPLOYMENT.md`](DEPLOYMEN
 
 - Participant drafts are kept in the browser's local storage during the session.
 - Researcher exports download JSON files directly to the researcher's computer.
-- Tool C PNG data is embedded in the downloaded Phase 2 JSON.
+- Tool C PNG data is embedded in the downloaded Part 2 JSON.
 - Do not configure Supabase for the GitHub Pages deployment (localStorage only). Use Vercel + Supabase for cross-device storage — see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## Publish Steps

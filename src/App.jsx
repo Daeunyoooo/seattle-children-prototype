@@ -288,7 +288,7 @@ function extractLinkedPeerValuesFromSessionJson(payload, peerLabel) {
     throw new Error(`${peerLabel} JSON must be a participant session export.`);
   }
 
-  // Prefer Phase 1 summary / Phase 2 selection when present; otherwise Tool A/B
+  // Prefer Part 1 summary / Part 2 selection when present; otherwise Tool A/B
   // identified values; finally AI-generated suggestions stamped per tool.
   const selected = collectValueLabels(session.phase2?.selectedValues);
   const phase1Values = [
@@ -310,7 +310,7 @@ function extractLinkedPeerValuesFromSessionJson(payload, peerLabel) {
         : uniqueAiFallbackValues;
   if (!values.length) {
     throw new Error(
-      `${peerLabel} JSON has no selectedValues, Tool A/B identifiedValues, or AI-generated values. Finish Phase 1 first, then download the Phase 1 log.`
+      `${peerLabel} JSON has no selectedValues, Tool A/B identifiedValues, or AI-generated values. Finish Part 1 first, then download the Part 1 log.`
     );
   }
 
@@ -1792,7 +1792,7 @@ export default function App() {
     if (participantRole === "caregiver") {
       return mapTextsToPhase2ValueItems(phase2SelectedValues, "phase2-caregiver", (text) => getPhase2ValueIcon(text));
     }
-    // Youth: linked caregiver values when researcher uploaded; empty keeps predefined defaults in Phase 2 tools.
+    // Youth: linked caregiver values when researcher uploaded; empty keeps predefined defaults in Part 2 tools.
     return mapTextsToPhase2ValueItems(linkedCaregiverValues, "phase2-caregiver", (text) => getPhase2ValueIcon(text));
   }, [participantRole, phase2SelectedValues, linkedCaregiverValues, phase2ValueIconMap]);
 
@@ -3144,7 +3144,7 @@ export default function App() {
         session.phaseOne?.currentScreen === "summary" ||
         session.phase >= 2;
       if (!phase1Complete) {
-        setResearcherStatus(`${cleanSessionId} has not finished Phase 1 yet.`);
+        setResearcherStatus(`${cleanSessionId} has not finished Part 1 yet.`);
         return;
       }
       const downloadedAt = new Date().toISOString();
@@ -3159,10 +3159,10 @@ export default function App() {
       };
       writeParticipantSessionDraft(downloadSession);
       setResearcherDraftTick((current) => current + 1);
-      downloadJsonFile(`${cleanSessionId}-phase1-log.json`, downloadSession);
-      setResearcherStatus(`Downloaded Phase 1 log for ${cleanSessionId} to this computer.`);
+      downloadJsonFile(`${cleanSessionId}-part1-log.json`, downloadSession);
+      setResearcherStatus(`Downloaded Part 1 log for ${cleanSessionId} to this computer.`);
     } catch (error) {
-      setResearcherStatus(error.message || "Could not download Phase 1 log.");
+      setResearcherStatus(error.message || "Could not download Part 1 log.");
     }
   }
 
@@ -3176,7 +3176,7 @@ export default function App() {
       const session = await getSessionForResearcherSave(cleanSessionId);
       const phase2Ready = session.participantFinished || session.phase === 2;
       if (!phase2Ready) {
-        setResearcherStatus(`${cleanSessionId} has not finished Phase 2 yet. Ask the participant to tap Done.`);
+        setResearcherStatus(`${cleanSessionId} has not finished Part 2 yet. Ask the participant to tap Done.`);
         return;
       }
       const downloadedAt = new Date().toISOString();
@@ -3191,10 +3191,10 @@ export default function App() {
       };
       writeParticipantSessionDraft(downloadSession);
       setResearcherDraftTick((current) => current + 1);
-      downloadJsonFile(`${cleanSessionId}-phase2-log.json`, downloadSession);
-      setResearcherStatus(`Downloaded Phase 2 log for ${cleanSessionId} to this computer.`);
+      downloadJsonFile(`${cleanSessionId}-part2-log.json`, downloadSession);
+      setResearcherStatus(`Downloaded Part 2 log for ${cleanSessionId} to this computer.`);
     } catch (error) {
-      setResearcherStatus(error.message || "Could not download Phase 2 log.");
+      setResearcherStatus(error.message || "Could not download Part 2 log.");
     }
   }
 
@@ -3359,7 +3359,7 @@ export default function App() {
       session.sessionStatus === "phase2_saved" || session.sessionStatus === "completed"
         ? "Session already saved by researcher."
         : session.sessionStatus === "phase1_saved"
-          ? "Phase 1 saved by researcher."
+          ? "Part 1 saved by researcher."
           : ""
     );
   }
@@ -4836,7 +4836,7 @@ export default function App() {
     const drawingNote =
       linked.linkedYouthDrawings.length > 0
         ? ` including ${linked.linkedYouthDrawings.length} Tool C drawing${linked.linkedYouthDrawings.length === 1 ? "" : "s"}`
-        : " (no Tool C drawings found — upload Youth Phase 2 JSON for images)";
+        : " (no Tool C drawings found — upload Youth Part 2 JSON for images)";
     setPeerLinkFeedback(
       "success",
       `Linked ${linked.linkedYouthValues.length} Youth value${linked.linkedYouthValues.length === 1 ? "" : "s"} from ${youthLabel} to caregiver ${targetSessionId}${drawingNote}.`
@@ -4957,7 +4957,7 @@ export default function App() {
         ? ` including ${linked.linkedCaregiverDrawings.length} Tool C drawing${
             linked.linkedCaregiverDrawings.length === 1 ? "" : "s"
           }`
-        : " (no Tool C drawings found — upload Caregiver Phase 2 JSON for images)";
+        : " (no Tool C drawings found — upload Caregiver Part 2 JSON for images)";
     setPeerLinkFeedback(
       "success",
       `Linked ${linked.linkedCaregiverValues.length} Caregiver value${
@@ -5099,8 +5099,8 @@ export default function App() {
         <section className="researcher-card researcher-participant-bar">
           <h2>Who are you working with?</h2>
           <p className="researcher-subtitle">
-            Youth and Caregiver use the same Phase 1 AI value workflow. Caregiver mode also lets you upload a Youth
-            JSON file for Phase 2.
+            Youth and Caregiver use the same Part 1 AI value workflow. Caregiver mode also lets you upload a Youth
+            JSON file for Part 2.
           </p>
           <div className="role-entry-grid" role="group" aria-label="Researcher focus role">
             <button
@@ -5114,7 +5114,7 @@ export default function App() {
             >
               <span className="role-entry-card-kicker">Session type</span>
               <strong className="role-entry-card-title">Youth</strong>
-              <span className="role-entry-card-copy">Same Phase 1 AI elicitation and session log downloads.</span>
+              <span className="role-entry-card-copy">Same Part 1 AI elicitation and session log downloads.</span>
             </button>
             <button
               type="button"
@@ -5128,7 +5128,7 @@ export default function App() {
               <span className="role-entry-card-kicker">Session type</span>
               <strong className="role-entry-card-title">Caregiver</strong>
               <span className="role-entry-card-copy">
-                Same Phase 1 AI elicitation, plus upload Youth JSON for Phase 2.
+                Same Part 1 AI elicitation, plus upload Youth JSON for Part 2.
               </span>
             </button>
           </div>
@@ -5159,7 +5159,7 @@ export default function App() {
           ) : null}
           {loadedDraft ? (
             <p className="researcher-draft-summary">
-              {researcherSessionLookup}: {loadedDraft.role === "caregiver" ? "Caregiver" : "Youth"} · Phase{" "}
+              {researcherSessionLookup}: {loadedDraft.role === "caregiver" ? "Caregiver" : "Youth"} · Part{" "}
               {loadedDraft.phase || 1}
               {loadedDraft.phase === 2 ? ` · ${loadedDraft.phaseTwo?.currentScreen || "tools"}` : ` · ${loadedDraft.phaseOne?.currentScreen || "questions"}`}
               {loadedDraft.participantFinished ? " · participant finished" : ""}
@@ -5182,16 +5182,16 @@ export default function App() {
 
         {researcherWorkingWithCaregiver ? (
           <section className="researcher-card researcher-workflow-card">
-            <h2>Caregiver only — Link Youth values for Phase 2</h2>
+            <h2>Caregiver only — Link Youth values for Part 2</h2>
             <p className="researcher-subtitle">
-              Upload the Youth Phase 1 log (after Youth finishes Phase 1) so Caregiver Phase 2 shows Youth values.
-              Phase 2 log is only needed if you also want Youth Tool C drawings.
+              Upload the Youth Part 1 log (after Youth finishes Part 1) so Caregiver Part 2 shows Youth values.
+              Part 2 log is only needed if you also want Youth Tool C drawings.
             </p>
             <div className="researcher-workflow-step">
               <div className="researcher-step-label">Upload Youth session JSON</div>
               <p>
                 Current caregiver ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Drop the Youth{" "}
-                <code>*-phase1-log.json</code> file as-is (uses Phase 2 selections if present, otherwise Tool A/B
+                <code>*-part1-log.json</code> file as-is (uses Part 2 selections if present, otherwise Tool A/B
                 identified values).
               </p>
               <div
@@ -5247,17 +5247,17 @@ export default function App() {
           </section>
         ) : (
           <section className="researcher-card researcher-workflow-card">
-            <h2>Youth only — Link Caregiver values for Phase 2</h2>
+            <h2>Youth only — Link Caregiver values for Part 2</h2>
             <p className="researcher-subtitle">
-              Optional. Upload the Caregiver Phase 1 log (after Caregiver finishes Phase 1) so Youth Phase 2 shows
-              that Caregiver&apos;s values. Phase 2 log is only needed for Caregiver Tool C drawings. If you skip this,
+              Optional. Upload the Caregiver Part 1 log (after Caregiver finishes Part 1) so Youth Part 2 shows
+              that Caregiver&apos;s values. Part 2 log is only needed for Caregiver Tool C drawings. If you skip this,
               Youth keeps predefined Caregiver defaults.
             </p>
             <div className="researcher-workflow-step">
               <div className="researcher-step-label">Upload Caregiver session JSON</div>
               <p>
                 Current Youth ID: <strong>{researcherSessionLookup || "(none)"}</strong>. Drop the Caregiver{" "}
-                <code>*-phase1-log.json</code> file as-is (uses Phase 2 selections if present, otherwise Tool A/B
+                <code>*-part1-log.json</code> file as-is (uses Part 2 selections if present, otherwise Tool A/B
                 identified values).
               </p>
               <div
@@ -5308,7 +5308,7 @@ export default function App() {
                 </div>
               ) : (
                 <p className="researcher-draft-summary">
-                  No Caregiver values linked yet for this Youth ID. Phase 2 will use predefined Caregiver defaults.
+                  No Caregiver values linked yet for this Youth ID. Part 2 will use predefined Caregiver defaults.
                 </p>
               )}
             </div>
@@ -5317,7 +5317,7 @@ export default function App() {
 
         <section className="researcher-card researcher-workflow-card">
           <h2>
-            Phase 1 — Update {researcherWorkingWithCaregiver ? "Caregiver" : "Youth"} values with AI
+            Part 1 — Update {researcherWorkingWithCaregiver ? "Caregiver" : "Youth"} values with AI
           </h2>
           <p className="researcher-subtitle">
             Same workflow for Youth and Caregiver: export question responses for the hospital AI, then paste the AI
@@ -5404,7 +5404,7 @@ export default function App() {
           <h2>Session log data ({researcherWorkingWithCaregiver ? "Caregiver" : "Youth"})</h2>
           <p className="researcher-subtitle">
             Download participant log JSON directly to this computer. Nothing is uploaded to GitHub Pages. Tool C PNG
-            data is embedded in the Phase 2 JSON.
+            data is embedded in the Part 2 JSON.
           </p>
 
           {!loadedDraft ? (
@@ -5413,8 +5413,8 @@ export default function App() {
             <div className="log-data-panel">
               <div className="log-data-row">
                 <div className="log-data-info">
-                  <div className="log-data-title">Phase 1 log data</div>
-                  <p className="log-data-desc">Questions, values, goals, and AI updates through Phase 1.</p>
+                  <div className="log-data-title">Part 1 log data</div>
+                  <p className="log-data-desc">Questions, values, goals, and AI updates through Part 1.</p>
                   {phase1SavedAt ? (
                     <span className="log-data-saved">Downloaded {new Date(phase1SavedAt).toLocaleString()}</span>
                   ) : (
@@ -5438,7 +5438,7 @@ export default function App() {
                 (item) => item?.type === "image" && getPhase1ToolBPhotoSrc(item?.photo)
               ) ? (
                 <div className="log-data-images">
-                  <div className="log-data-title">Tool B photos / drawings (Phase 1)</div>
+                  <div className="log-data-title">Tool B photos / drawings (Part 1)</div>
                   <p className="log-data-desc">
                     Question photos/drawings and images added on the values board. Stored as PNG in Supabase Storage
                     when remote save is enabled.
@@ -5477,7 +5477,7 @@ export default function App() {
 
               <div className="log-data-row">
                 <div className="log-data-info">
-                  <div className="log-data-title">Phase 2 log data</div>
+                  <div className="log-data-title">Part 2 log data</div>
                   <p className="log-data-desc">
                     Full session JSON. Tool C images use Storage PNG URLs when Supabase is configured.
                   </p>
@@ -5581,7 +5581,7 @@ export default function App() {
                 >
                   <span className="role-entry-card-kicker">Start as</span>
                   <strong className="role-entry-card-title">Youth</strong>
-                  <span className="role-entry-card-copy">Identify your own values in Phase 1 and Phase 2.</span>
+                  <span className="role-entry-card-copy">Identify your own values in Part 1 and Part 2.</span>
                 </button>
                 <button
                   type="button"
@@ -5591,7 +5591,7 @@ export default function App() {
                   <span className="role-entry-card-kicker">Start as</span>
                   <strong className="role-entry-card-title">Caregiver</strong>
                   <span className="role-entry-card-copy">
-                    Same Phase 1 tools and AI elicitation as Youth. Researcher later links Youth values for Phase 2.
+                    Same Part 1 tools and AI elicitation as Youth. Researcher later links Youth values for Part 2.
                   </span>
                 </button>
               </div>
@@ -5654,7 +5654,7 @@ export default function App() {
               {participantRole === "caregiver" ? (
                 <p className="participant-id-subtitle">
                   After you start, the researcher opens Caregiver mode and uploads the Youth session JSON so Youth
-                  values appear in Phase 2.
+                  values appear in Part 2.
                 </p>
               ) : null}
               {participantPasswordError ? (
@@ -5697,7 +5697,7 @@ export default function App() {
         {participantSyncStatus ? <span className="participant-sync-status">{participantSyncStatus}</span> : null}
       </div>
       <div className="phase-tabs">
-        <div className="phase-tab-list" role="tablist" aria-label="Workflow phase">
+        <div className="phase-tab-list" role="tablist" aria-label="Workflow part">
           <button
             id="tab-phase-1"
             type="button"
@@ -5707,7 +5707,7 @@ export default function App() {
             className={`phase-tab ${phase === 1 ? "active" : ""}`}
             onClick={() => switchPhase(1)}
           >
-            Phase 1 — Elicit values
+            Part 1 — Elicit values
           </button>
           <button
             id="tab-phase-2"
@@ -5718,12 +5718,12 @@ export default function App() {
             className={`phase-tab ${phase === 2 ? "active" : ""}`}
             onClick={() => switchPhase(2)}
           >
-            Phase 2 — Visualize values
+            Part 2 — Visualize values
           </button>
         </div>
         {phase === 1 ? (
           <div className="phase1-version-under-tab">
-            <div className="phase1-step-indicator" aria-label="Phase 1 progress">
+            <div className="phase1-step-indicator" aria-label="Part 1 progress">
               {phaseOneToolOrder.map((tool, index) => (
                 <span className="phase1-step-group" key={tool}>
                   {index > 0 ? (
@@ -5758,7 +5758,7 @@ export default function App() {
         {phase === 2 ? (
           <div className="phase1-version-under-tab phase2-tool-under-tab">
             <div className="phase1-version-under-tab-spacer" aria-hidden="true" />
-            <div className="phase1-step-indicator phase2-tool-step-indicator" role="tablist" aria-label="Phase 2 tools">
+            <div className="phase1-step-indicator phase2-tool-step-indicator" role="tablist" aria-label="Part 2 tools">
               {["A", "B", "C"].map((tool, index) => (
                 <span className="phase1-step-group" key={tool}>
                   {index > 0 ? (
@@ -6250,13 +6250,13 @@ export default function App() {
           <div className="screen active phase-one-summary">
             <div className="section-title">Review your identified values from Tool A and Tool B</div>
             <div className="section-sub">
-              Choose which final values and goals to bring into Phase 2. Your researcher can save a Phase 1 checkpoint
+              Choose which final values and goals to bring into Part 2. Your researcher can save a Part 1 checkpoint
               from the researcher page.
             </div>
             <div className="value-summary-counter" aria-live="polite">
               {phase2SelectedValues.length === 0
-                ? `Select up to ${MAX_PHASE2_VALUES} values for Phase 2`
-                : `${phase2SelectedValues.length} value${phase2SelectedValues.length === 1 ? "" : "s"} selected for Phase 2`}
+                ? `Select up to ${MAX_PHASE2_VALUES} values for Part 2`
+                : `${phase2SelectedValues.length} value${phase2SelectedValues.length === 1 ? "" : "s"} selected for Part 2`}
             </div>
 
             {summaryValueItems.length === 0 ? (
@@ -6327,7 +6327,7 @@ export default function App() {
                             disabled={!toolGoal}
                             onChange={() => togglePhase2GoalSource(source)}
                           />
-                          Use this goal in Phase 2
+                          Use this goal in Part 2
                         </label>
                         <div className="value-summary-goals-text">{toolGoal || "No goal entered yet."}</div>
                       </div>
@@ -6352,7 +6352,7 @@ export default function App() {
                 type="button"
                 onClick={switchToPhaseTwoFromSummary}
               >
-                Go to Phase 2 →
+                Go to Part 2 →
               </button>
             </div>
           </div>
