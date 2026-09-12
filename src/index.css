@@ -1188,9 +1188,15 @@ textarea:focus {
   text-align: center;
 }
 
-.photo-square-drop.is-photo-active {
+.photo-square-drop.is-photo-active,
+.photo-square-drop.is-dragover {
   box-shadow: 0 0 0 3px rgba(55, 138, 221, 0.28);
   border-color: #378add;
+}
+
+.photo-square-drop.is-dragover {
+  background: rgba(55, 138, 221, 0.1);
+  border-style: dashed;
 }
 
 .version-b-photo-prompt {
@@ -1288,7 +1294,13 @@ textarea:focus {
   border: 2px solid var(--color-border-tertiary);
   border-radius: var(--border-radius-md);
   background: var(--color-background-secondary);
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.version-b-library-item:active {
+  cursor: grabbing;
 }
 
 .version-b-library-item:hover,
@@ -1298,6 +1310,28 @@ textarea:focus {
 }
 
 .version-b-library-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.version-b-library-drag-ghost {
+  position: fixed;
+  z-index: 40;
+  width: 84px;
+  height: 84px;
+  margin: -42px 0 0 -42px;
+  overflow: hidden;
+  border: 2px solid #378add;
+  border-radius: var(--border-radius-md);
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(33, 31, 28, 0.22);
+  pointer-events: none;
+}
+
+.version-b-library-drag-ghost img {
   display: block;
   width: 100%;
   height: 100%;

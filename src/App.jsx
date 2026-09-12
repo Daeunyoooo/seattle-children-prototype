@@ -238,6 +238,7 @@ const GOAL_PROMPTS = [
 const MAX_PHASE2_VALUES = 5;
 const RESEARCHER_PATH = "/researcher";
 const PARTICIPANT_ACCESS_PASSWORD = "start";
+const VERSION_B_LIBRARY_DRAG_PREFIX = "seattle-toolb-library:";
 const RESEARCHER_ACCESS_PASSWORD = "collaboration";
 const PARTICIPANT_SESSION_STORAGE_KEY = "seattle-children-participant-id";
 const PARTICIPANT_SESSION_DRAFT_PREFIX = "seattle-children-session:";
@@ -1239,6 +1240,16 @@ function releaseUploadedPhoto(photo) {
   if (photo?.isUpload && photo?.url) URL.revokeObjectURL(photo.url);
 }
 
+function parseVersionBLibraryDragId(event) {
+  const raw = String(event.dataTransfer.getData("text/plain") || "");
+  if (!raw.startsWith(VERSION_B_LIBRARY_DRAG_PREFIX)) return "";
+  return raw.slice(VERSION_B_LIBRARY_DRAG_PREFIX.length);
+}
+
+function getDroppedImageFile(event) {
+  return [...(event.dataTransfer?.files || [])].find((file) => file.type.startsWith("image/")) || null;
+}
+
 function ImageLibrary({ items, onAdd, onSelect, activeUrl, emptyHint, description }) {
   return (
     <div className="image-library">
@@ -1334,6 +1345,8 @@ export default function App() {
   const [answers, setAnswers] = useState(() => Array(QUESTIONS.length).fill(""));
   const [versionBAnswers, setVersionBAnswers] = useState(() => Array(VERSION_B_QUESTIONS.length).fill(""));
   const [versionBPhotos, setVersionBPhotos] = useState(() => Array(VERSION_B_QUESTIONS.length).fill(null));
+  const [versionBPhotoDropActive, setVersionBPhotoDropActive] = useState(false);
+  const [versionBLibraryDrag, setVersionBLibraryDrag] = useState(null);
   const [versionBQuestionIndex, setVersionBQuestionIndex] = useState(0);
   const [versionBBoardItems, setVersionBBoardItems] = useState(() => []);
   const [versionBSelectedBoardItemId, setVersionBSelectedBoardItemId] = useState(null);
@@ -2411,6 +2424,7 @@ export default function App() {
   }
 
   function selectVersionBQuestionLibraryImage(libraryItem) {
+    if (!libraryItem?.url) return;
     setVersionBPhotos((current) =>
       current.map((photo, index) => {
         if (index !== versionBQuestionIndex) return photo;
@@ -2418,6 +2432,66 @@ export default function App() {
         return { name: libraryItem.name, url: libraryItem.url };
       })
     );
+  }
+
+  function startVersionBLibraryPointerDrag(libraryItem, event) {
+    if (event.button !== 0 || !libraryItem?.url) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let dragging = false;
+
+    function updateHover(clientX, clientY) {
+      const target = document.elementFromPoint(clientX, clientY);
+      setVersionBPhotoDropActive(Boolean(target?.closest(".photo-square-drop")));
+    }
+
+    function onMove(moveEvent) {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (!dragging && dx * dx + dy * dy < 64) return;
+      if (!dragging) dragging = true;
+      moveEvent.preventDefault();
+      setVersionBLibraryDrag({ item: libraryItem, x: moveEvent.clientX, y: moveEvent.clientY });
+      updateHover(moveEvent.clientX, moveEvent.clientY);
+    }
+
+    function onUp(upEvent) {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      const target = document.elementFromPoint(upEvent.clientX, upEvent.clientY);
+      const droppedOnSquare = Boolean(target?.closest(".photo-square-drop"));
+      if (droppedOnSquare || !dragging) {
+        selectVersionBQuestionLibraryImage(libraryItem);
+      }
+      setVersionBLibraryDrag(null);
+      setVersionBPhotoDropActive(false);
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  function handleVersionBPhotoDragOver(event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    if (!versionBPhotoDropActive) setVersionBPhotoDropActive(true);
+  }
+
+  function handleVersionBPhotoDragLeave(event) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setVersionBPhotoDropActive(false);
+  }
+
+  function handleVersionBPhotoDrop(event) {
+    event.preventDefault();
+    setVersionBPhotoDropActive(false);
+    const libraryItem = versionBQuestionLibrary.find((item) => item.id === parseVersionBLibraryDragId(event));
+    if (libraryItem) {
+      selectVersionBQuestionLibraryImage(libraryItem);
+      return;
+    }
+    const file = getDroppedImageFile(event);
+    if (file) addToVersionBQuestionLibrary(file);
   }
 
   function stopSpeechRecognition() {
@@ -5944,31 +6018,36 @@ export default function App() {
 
                   <p className="version-b-photo-prompt">
                     {versionBQuestionIndex === 0
-                      ? "Choose a picture from the library that represents your hopeful future."
-                      : "Choose a picture from the library that represents your worried future."}
+                      ? "Tap or drag a picture from the library that represents your hopeful future."
+                      : "Tap or drag a picture from the library that represents your worried future."}
                   </p>
 
                   <div className="photo-square-field">
                     <div
                       className={`photo-square-drop ${
                         versionBPhotos[versionBQuestionIndex] ? "has-photo" : ""
-                      }`}
+                      } ${versionBPhotoDropActive ? "is-dragover" : ""}`}
                       aria-label={
                         versionBPhotos[versionBQuestionIndex]
                           ? "Selected photo from library"
-                          : "Selected photo preview"
+                          : "Drop a picture here"
                       }
+                      onDragEnter={handleVersionBPhotoDragOver}
+                      onDragOver={handleVersionBPhotoDragOver}
+                      onDragLeave={handleVersionBPhotoDragLeave}
+                      onDrop={handleVersionBPhotoDrop}
                     >
                       {versionBPhotos[versionBQuestionIndex] ? (
                         <img
                           src={versionBPhotos[versionBQuestionIndex].url}
                           alt=""
                           className="photo-square-img"
+                          draggable={false}
                         />
                       ) : (
                         <div className="photo-square-placeholder" aria-hidden="true">
                           <span className="photo-square-plus">+</span>
-                          <span className="photo-square-label">Choose from library</span>
+                          <span className="photo-square-label">Drag or tap a picture</span>
                         </div>
                       )}
                     </div>
@@ -5984,6 +6063,16 @@ export default function App() {
                     ) : null}
                   </div>
 
+                  {versionBLibraryDrag ? (
+                    <div
+                      className="version-b-library-drag-ghost"
+                      style={{ left: versionBLibraryDrag.x, top: versionBLibraryDrag.y }}
+                      aria-hidden="true"
+                    >
+                      <img src={versionBLibraryDrag.item.url} alt="" />
+                    </div>
+                  ) : null}
+
                   <div className="version-b-photo-panel version-b-photo-panel--library-always">
                     <div className="version-b-library-grid">
                       {versionBQuestionLibrary.map((item) => (
@@ -5994,9 +6083,9 @@ export default function App() {
                             versionBPhotos[versionBQuestionIndex]?.url === item.url ? "is-selected" : ""
                           }`}
                           aria-label={`Use ${item.name}`}
-                          onClick={() => selectVersionBQuestionLibraryImage(item)}
+                          onPointerDown={(event) => startVersionBLibraryPointerDrag(item, event)}
                         >
-                          <img src={item.url} alt="" />
+                          <img src={item.url} alt="" draggable={false} />
                         </button>
                       ))}
                     </div>
