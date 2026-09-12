@@ -843,10 +843,11 @@ textarea:focus {
   position: relative;
   min-height: 420px;
   margin-bottom: 1.75rem;
+  padding: 14px 12px 12px;
   border: 0.5px solid var(--color-border-tertiary);
   border-radius: var(--border-radius-lg);
   background: #f7f5ef;
-  overflow: hidden;
+  overflow: visible;
   touch-action: none;
 }
 
@@ -897,8 +898,8 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0.5px solid var(--color-border-tertiary);
   border-radius: 50%;
@@ -1800,16 +1801,17 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   flex-shrink: 0;
   border-radius: 50%;
   border: 0.5px solid var(--color-border-secondary);
   background: var(--color-background-primary);
   color: var(--color-text-tertiary);
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1;
+  cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 
@@ -1849,8 +1851,8 @@ textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   flex-shrink: 0;
   border-radius: 50%;

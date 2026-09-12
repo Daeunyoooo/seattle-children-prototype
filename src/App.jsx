@@ -1411,6 +1411,10 @@ export default function App() {
   const recognitionRef = useRef(null);
   const sessionEventsRef = useRef([]);
   const lastAppliedAiValuesAtRef = useRef({ A: null, B: null });
+  const valuesRef = useRef(values);
+  const versionBBoardItemsRef = useRef(versionBBoardItems);
+  valuesRef.current = values;
+  versionBBoardItemsRef.current = versionBBoardItems;
 
   function appendSessionEvent(event) {
     sessionEventsRef.current = [
@@ -1419,12 +1423,7 @@ export default function App() {
     ];
   }
 
-  function getSessionAiValuesForTool(session, tool) {
-    const byToolMap = session?.aiGeneratedValuesByTool;
-    const fromByTool = Array.isArray(byToolMap?.[tool]) ? byToolMap[tool] : null;
-    if (fromByTool?.length) {
-      return fromByTool.map(normalizeAiValue).filter(Boolean);
-    }
+  function getSessionIdentifiedValuesForTool(session, tool) {
     if (tool === "A") {
       return (session?.toolA?.identifiedValues || [])
         .map((text, index) =>
@@ -1445,30 +1444,46 @@ export default function App() {
       .filter(Boolean);
   }
 
-  function applyImportedAiValuesForTool(session, tool, { force = false } = {}) {
+  function getSessionImportedAiValuesForTool(session, tool) {
+    const fromByTool = session?.aiGeneratedValuesByTool?.[tool];
+    return Array.isArray(fromByTool) ? fromByTool.map(normalizeAiValue).filter(Boolean) : [];
+  }
+
+  function getAiValuesImportedAt(session, tool) {
+    return session?.aiValuesUpdatedAtByTool?.[tool] || null;
+  }
+
+  function applyImportedAiValuesForTool(session, tool, { localEmpty: localEmptyOverride } = {}) {
     if (!session || !["A", "B"].includes(tool)) return false;
-    const aiValues = getSessionAiValuesForTool(session, tool);
-    if (!aiValues.length) return false;
 
-    const updatedAt =
-      session.aiValuesUpdatedAtByTool?.[tool] ||
-      session.updatedAt ||
-      session.exportedAt ||
-      null;
+    const importedAt = getAiValuesImportedAt(session, tool);
     const lastApplied = lastAppliedAiValuesAtRef.current[tool];
-    const isNewer = Boolean(updatedAt && (!lastApplied || String(updatedAt) > String(lastApplied)));
+    const isNewerImport = Boolean(importedAt && (!lastApplied || String(importedAt) > String(lastApplied)));
     const localEmpty =
-      tool === "A"
-        ? values.length === 0
-        : !versionBBoardItems.some((item) => item.type === "text" && item.text?.trim());
+      typeof localEmptyOverride === "boolean"
+        ? localEmptyOverride
+        : tool === "A"
+          ? valuesRef.current.length === 0
+          : !versionBBoardItemsRef.current.some((item) => item.type === "text" && item.text?.trim());
 
-    if (!force && !localEmpty && !isNewer) return false;
+    // A new researcher import may replace local edits. Otherwise keep participant
+    // changes — session.updatedAt changes on every autosave and must not reset them.
+    if (!isNewerImport && !localEmpty) return false;
+
+    let aiValues = isNewerImport
+      ? getSessionImportedAiValuesForTool(session, tool)
+      : getSessionIdentifiedValuesForTool(session, tool);
+    if (!aiValues.length && isNewerImport) {
+      aiValues = getSessionIdentifiedValuesForTool(session, tool);
+    }
+    if (!aiValues.length) return false;
 
     const importedTexts = aiValues.map((value) => value.text);
     const importedIcons = aiValues.map((value) => value.icon || getValueIcon(value.text));
     setAiSuggestedValues(aiValues);
 
     if (tool === "A") {
+      valuesRef.current = importedTexts;
       setValues(importedTexts);
       setValueIcons(importedIcons);
       setToolAValues(importedTexts);
@@ -1478,16 +1493,18 @@ export default function App() {
       setToolBValueIcons(importedIcons);
       setVersionBBoardItems((current) => {
         const imageItems = (Array.isArray(current) ? current : []).filter((item) => item.type === "image");
-        return ensureQuestionPhotosOnVersionBBoard(
+        const next = ensureQuestionPhotosOnVersionBBoard(
           [...imageItems, ...createVersionBBoardItemsFromValues(importedTexts)],
           versionBPhotos
         );
+        versionBBoardItemsRef.current = next;
+        return next;
       });
     }
 
     lastAppliedAiValuesAtRef.current = {
       ...lastAppliedAiValuesAtRef.current,
-      [tool]: updatedAt || new Date().toISOString()
+      [tool]: importedAt || lastApplied || new Date().toISOString()
     };
     return true;
   }
@@ -1668,7 +1685,7 @@ export default function App() {
       channel?.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [participantSessionId, researcherMode, phase, phaseOneScreen, phaseOneVersion, values.length, versionBBoardItems, versionBPhotos]);
+  }, [participantSessionId, researcherMode, phase, phaseOneScreen, phaseOneVersion, versionBPhotos]);
 
   const currentToolAQuestions = participantRole === "caregiver" ? CAREGIVER_QUESTIONS : QUESTIONS;
   const currentQ = currentToolAQuestions[currentQuestion];
@@ -2495,12 +2512,12 @@ export default function App() {
       setCurrentQuestion((current) => current + 1);
       return;
     }
-    setValues([]);
-    setValueIcons([]);
     setPhaseOneScreen("values");
     window.setTimeout(() => {
       const draft = readParticipantSessionDraft(participantSessionId);
-      if (draft) applyImportedAiValuesForTool(draft, "A", { force: true });
+      if (draft) {
+        applyImportedAiValuesForTool(draft, "A", { localEmpty: valuesRef.current.length === 0 });
+      }
       void syncFullDraftForResearcher();
     }, 0);
   }
@@ -2586,48 +2603,58 @@ export default function App() {
     const initial = seeded.slice(0, VERSION_B_VALUE_SLOTS);
     setValues(initial.filter((text) => text.trim()));
     setValueIcons([]);
-    // Keep value text cards empty until AI import is applied on this screen.
-    // Preserve any question photos already on the board.
-    setVersionBBoardItems((current) => (Array.isArray(current) ? current.filter((item) => item.type === "image") : []));
     setVersionBSelectedBoardItemId(null);
     setPhaseOneScreen("values");
     window.setTimeout(() => {
       const draft = readParticipantSessionDraft(participantSessionId);
-      if (draft) applyImportedAiValuesForTool(draft, "B", { force: true });
+      if (draft) {
+        applyImportedAiValuesForTool(draft, "B", {
+          localEmpty: !versionBBoardItemsRef.current.some((item) => item.type === "text" && item.text?.trim())
+        });
+      }
       void syncFullDraftForResearcher();
     }, 0);
   }
 
+  function commitToolBBoardItems(nextItems) {
+    versionBBoardItemsRef.current = nextItems;
+    setVersionBBoardItems(nextItems);
+    const nextValues = nextItems
+      .filter((item) => item.type === "text")
+      .map((item) => item.text?.trim() || "")
+      .filter(Boolean);
+    setToolBValues(nextValues);
+    setToolBValueIcons((current) => nextValues.map((value, index) => current[index] || getValueIcon(value)));
+  }
+
   function updateVersionBBoardItemText(itemId, text) {
-    setVersionBBoardItems((current) =>
-      current.map((item) => (item.id === itemId ? { ...item, text } : item))
+    commitToolBBoardItems(
+      versionBBoardItems.map((item) => (item.id === itemId ? { ...item, text } : item))
     );
   }
 
   function removeVersionBBoardItem(itemId) {
-    setVersionBBoardItems((current) => current.filter((item) => item.id !== itemId));
+    commitToolBBoardItems(versionBBoardItems.filter((item) => item.id !== itemId));
     setVersionBSelectedBoardItemId((current) => (current === itemId ? null : current));
   }
 
   function addVersionBBoardText() {
     const nextId = newVersionBCardId();
-    setVersionBBoardItems((current) => {
-      const textCount = current.filter((item) => item.type === "text").length;
-      const position = {
-        x: clampBoardPosition(10 + (textCount * 11) % 52),
-        y: clampBoardPosition(12 + (textCount * 15) % 50)
-      };
-      return [
-        ...current,
-        {
-          id: nextId,
-          type: "text",
-          x: position.x,
-          y: position.y,
-          text: ""
-        }
-      ];
-    });
+    const textCount = versionBBoardItems.filter((item) => item.type === "text").length;
+    const position = {
+      x: clampBoardPosition(10 + (textCount * 11) % 52),
+      y: clampBoardPosition(12 + (textCount * 15) % 50)
+    };
+    commitToolBBoardItems([
+      ...versionBBoardItems,
+      {
+        id: nextId,
+        type: "text",
+        x: position.x,
+        y: position.y,
+        text: ""
+      }
+    ]);
     setVersionBSelectedBoardItemId(nextId);
   }
 
@@ -2697,41 +2724,47 @@ export default function App() {
   function moveValue(index, delta) {
     const target = index + delta;
     if (target < 0 || target >= values.length) return;
-    setValues((current) => {
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-    setValueIcons((current) => {
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+    const nextValues = [...values];
+    const nextIcons = [...valueIcons];
+    [nextValues[index], nextValues[target]] = [nextValues[target], nextValues[index]];
+    [nextIcons[index], nextIcons[target]] = [nextIcons[target], nextIcons[index]];
+    commitToolAValues(nextValues, nextIcons);
+  }
+
+  function commitToolAValues(nextValues, nextIcons) {
+    const cleaned = nextValues.map((value) => value.trim()).filter(Boolean);
+    valuesRef.current = nextValues;
+    setValues(nextValues);
+    setValueIcons(nextIcons);
+    setToolAValues(cleaned);
+    setToolAValueIcons(nextIcons.slice(0, cleaned.length));
   }
 
   function addValue() {
     const trimmed = newValue.trim();
-    if (!trimmed) return;
-    setValues((current) => [...current, trimmed]);
-    setValueIcons((current) => [...current, null]);
+    commitToolAValues([...values, trimmed], [...valueIcons, null]);
     setNewValue("");
   }
 
   function updateValue(index, value) {
-    setValues((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)));
+    commitToolAValues(
+      values.map((item, itemIndex) => (itemIndex === index ? value : item)),
+      valueIcons
+    );
   }
 
   function removeValue(index) {
-    setValues((current) => current.filter((_, itemIndex) => itemIndex !== index));
-    setValueIcons((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    commitToolAValues(
+      values.filter((_, itemIndex) => itemIndex !== index),
+      valueIcons.filter((_, itemIndex) => itemIndex !== index)
+    );
   }
 
   function setValueIcon(index, emoji) {
-    setValueIcons((current) => {
-      const next = [...current];
-      next[index] = emoji;
-      return next;
-    });
+    const nextIcons = [...valueIcons];
+    nextIcons[index] = emoji;
+    setValueIcons(nextIcons);
+    setToolAValueIcons(nextIcons.slice(0, values.filter((value) => value.trim()).length));
   }
 
   function setSummaryValueIcon(source, sourceIndex, emoji) {
@@ -2786,21 +2819,20 @@ export default function App() {
   }
 
   function currentToolAValues() {
-    if (toolAValues.length > 0) return toolAValues;
-    // Only use transient `values` while actively editing Tool A values — never while on
-    // Tool A questions after coming from Tool B (that state may still be stale).
     if (phaseOneVersion === "A" && phaseOneScreen === "values") {
       return values.map((value) => value.trim()).filter(Boolean);
     }
-    return [];
+    return toolAValues;
   }
 
   function currentToolBValues() {
-    if (toolBValues.length > 0) return toolBValues;
-    return versionBBoardItems
-      .filter((item) => item.type === "text")
-      .map((item) => item.text?.trim() || "")
-      .filter(Boolean);
+    if (phaseOneVersion === "B" && phaseOneScreen === "values") {
+      return versionBBoardItems
+        .filter((item) => item.type === "text")
+        .map((item) => item.text?.trim() || "")
+        .filter(Boolean);
+    }
+    return toolBValues;
   }
 
   function snapshotPerValueDrawings() {
@@ -3322,13 +3354,19 @@ export default function App() {
     setPhaseOneScreen(preferredScreen);
     if (session.aiValuesUpdatedAtByTool) {
       lastAppliedAiValuesAtRef.current = {
-        A: null,
-        B: null
+        A: session.aiValuesUpdatedAtByTool.A || null,
+        B: session.aiValuesUpdatedAtByTool.B || null
       };
     }
-    // If restoring onto the values screen, fill from AI import without requiring a second sync.
+    // Restore identified values as-is. Only fill if this tool's values screen is empty.
     if (preferredScreen === "values") {
-      applyImportedAiValuesForTool(session, targetTool, { force: true });
+      applyImportedAiValuesForTool(session, targetTool, {
+        localEmpty:
+          targetTool === "A"
+            ? restoredAValues.length === 0
+            : restoredBValues.length === 0 &&
+              !(session.toolB?.boardItems || []).some((item) => item.type === "text" && item.text?.trim())
+      });
     }
     const restoredSelectedValues = session.phase2?.selectedValues || [];
     setDrawValues(restoredSelectedValues);
@@ -6016,7 +6054,11 @@ export default function App() {
                               type="button"
                               className="version-b-board-item-remove"
                               aria-label={`Remove ${itemLabel}`}
-                              onClick={() => removeVersionBBoardItem(item.id)}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removeVersionBBoardItem(item.id);
+                              }}
                             >
                               ×
                             </button>
@@ -6238,7 +6280,18 @@ export default function App() {
             )}
 
             <div className="nav-row">
-              <button type="button" onClick={() => setPhaseOneScreen("questions")}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (phaseOneVersion === "A") {
+                    commitToolAValues(values, valueIcons);
+                    setToolAGoalData({ ...goalData });
+                  } else {
+                    commitToolBBoardItems(versionBBoardItems);
+                  }
+                  setPhaseOneScreen("questions");
+                }}
+              >
                 ← Edit answers
               </button>
               <button className="primary" type="button" onClick={completeCurrentToolAndContinue}>
