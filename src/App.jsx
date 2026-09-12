@@ -237,7 +237,8 @@ const GOAL_PROMPTS = [
 ];
 const MAX_PHASE2_VALUES = 5;
 const RESEARCHER_PATH = "/researcher";
-const PARTICIPANT_ACCESS_PASSWORD = "collaboration";
+const PARTICIPANT_ACCESS_PASSWORD = "start";
+const RESEARCHER_ACCESS_PASSWORD = "collaboration";
 const PARTICIPANT_SESSION_STORAGE_KEY = "seattle-children-participant-id";
 const PARTICIPANT_SESSION_DRAFT_PREFIX = "seattle-children-session:";
 const PARTICIPANT_SESSION_SYNC_CHANNEL = "seattle-children-session-sync";
@@ -5045,7 +5046,7 @@ export default function App() {
                 }}
                 onKeyDown={(event) => {
                   if (event.key !== "Enter") return;
-                  if (researcherPassword.trim() !== PARTICIPANT_ACCESS_PASSWORD) {
+                  if (researcherPassword.trim() !== RESEARCHER_ACCESS_PASSWORD) {
                     setResearcherPasswordError("Incorrect password.");
                     return;
                   }
@@ -5065,7 +5066,7 @@ export default function App() {
                 type="button"
                 disabled={!researcherPassword.trim()}
                 onClick={() => {
-                  if (researcherPassword.trim() !== PARTICIPANT_ACCESS_PASSWORD) {
+                  if (researcherPassword.trim() !== RESEARCHER_ACCESS_PASSWORD) {
                     setResearcherPasswordError("Incorrect password.");
                     return;
                   }
