@@ -741,6 +741,10 @@ textarea:focus {
   position: relative;
 }
 
+.answer-input-wrap.has-mic-tutorial {
+  margin-bottom: 100px;
+}
+
 .answer-input-wrap textarea {
   padding-right: 52px;
   padding-bottom: 42px;
@@ -778,6 +782,76 @@ textarea:focus {
 
 .mic-btn:disabled {
   opacity: 0.35;
+}
+
+.mic-error {
+  position: absolute;
+  right: 10px;
+  bottom: -20px;
+  margin: 0;
+  font-size: 12px;
+  color: #e24b4a;
+}
+
+.mic-tutorial {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  z-index: 5;
+  width: 230px;
+  max-width: calc(100% - 12px);
+  padding: 10px 12px;
+  border-radius: var(--border-radius-md);
+  background: rgba(24, 95, 165, 0.88);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(24, 95, 165, 0.22);
+}
+
+.mic-tutorial p {
+  margin: 0 0 8px;
+}
+
+.mic-tutorial-dismiss {
+  padding: 3px 9px;
+  border: none;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #185fa5;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mic-tutorial-dismiss:hover {
+  background: #eef5fc;
+}
+
+@media (min-width: 900px) {
+  .answer-input-wrap.has-mic-tutorial {
+    margin-bottom: 0;
+  }
+
+  .mic-tutorial {
+    top: 50%;
+    left: calc(100% + 14px);
+    right: auto;
+    margin-top: 0;
+    transform: translateY(-50%);
+  }
+
+  .mic-tutorial::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    width: 8px;
+    height: 14px;
+    margin-top: -7px;
+    background: rgba(24, 95, 165, 0.88);
+    clip-path: polygon(100% 0, 100% 100%, 0 50%);
+  }
 }
 
 .photo-square-field {

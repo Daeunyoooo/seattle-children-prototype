@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { transcribeRequest } from "./server/transcribe.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HOST = "0.0.0.0";
@@ -341,6 +342,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/health") {
       sendJson(res, 200, { ok: true, service: "seattle-children-prototype" });
+      return;
+    }
+
+    if (url.pathname === "/api/transcribe") {
+      await transcribeRequest(req, res);
       return;
     }
 

@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "api": "node server.js",
-    "dev:all": "node server.js & vite",
+    "api": "node --env-file-if-exists=.env server.js",
+    "dev:all": "node --env-file-if-exists=.env server.js & vite",
     "build": "vite build",
     "build:github": "vite build --outDir docs --emptyOutDir && cp docs/index.html docs/404.html && touch docs/.nojekyll",
     "build:connect": "vite build",

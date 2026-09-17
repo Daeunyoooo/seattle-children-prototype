@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ValueEmojiPicker from "./ValueEmojiPicker.jsx";
+import { useVoiceToText } from "./lib/useVoiceToText.js";
 import {
   saveParticipantSessionRemote,
   loadParticipantSessionRemote,
@@ -18,6 +19,13 @@ import {
 } from "./assets/image-library/version-b/library.js";
 import ToolAVennDiagram from "../Phase2_ToolA_venndiagram/src/App.jsx";
 import ToolBPuzzle from "../Phase2_ToolB_Puzzle/src/App.jsx";
+
+const VOICE_ERROR_MESSAGES = {
+  permission_denied: "Microphone access was denied.",
+  not_configured: "Voice input isn't set up yet.",
+  no_speech: "Didn't catch any speech — try again.",
+  transcription_failed: "Couldn't transcribe that. Try again."
+};
 
 const QUESTIONS = [
   {
@@ -1378,6 +1386,7 @@ export default function App() {
   const [goalData, setGoalData] = useState(() => ({ ...GOAL_PLACEHOLDERS }));
   const [editingGoal, setEditingGoal] = useState(null);
   const [showGoalExample, setShowGoalExample] = useState(false);
+  const [micTutorialDismissed, setMicTutorialDismissed] = useState({ A: false, B: false });
   const [pictureTitle, setPictureTitle] = useState("");
   const [drawValues, setDrawValues] = useState([]);
   const [drawSettings, setDrawSettings] = useState(() => makeDefaultSettings(0));
@@ -1392,8 +1401,6 @@ export default function App() {
   const [sharedBrushColorIndex, setSharedBrushColorIndex] = useState(6);
   const [sharedBrushSize, setSharedBrushSize] = useState(8);
   const [shareTargets, setShareTargets] = useState({ caregiver: true, clinician: true });
-  const [listeningQuestion, setListeningQuestion] = useState(null);
-  const [speechDraft, setSpeechDraft] = useState("");
   const [, forceCompositeDraw] = useState(0);
   const [, forceSharedDraw] = useState(0);
 
@@ -1422,7 +1429,6 @@ export default function App() {
   const interactStartRef = useRef({});
   const dragPayloadRef = useRef(null);
   const valueResizeRef = useRef(null);
-  const recognitionRef = useRef(null);
   const sessionEventsRef = useRef([]);
   const lastAppliedAiValuesAtRef = useRef({ A: null, B: null });
   const valuesRef = useRef(values);
@@ -1707,8 +1713,22 @@ export default function App() {
   const versionBSelectedBoardItem = versionBBoardItems.find((item) => item.id === versionBSelectedBoardItemId) ?? null;
   const versionBSelectedBoardImageUrl =
     versionBSelectedBoardItem?.type === "image" ? versionBSelectedBoardItem.photo?.url : undefined;
-  const speechSupported =
-    typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+  const toolAVoice = useVoiceToText({
+    getTarget: () => ({ baseText: answers[currentQuestion], index: currentQuestion }),
+    onAppendText: (nextText, target) => {
+      setAnswers((current) => current.map((answer, index) => (index === target.index ? nextText : answer)));
+    }
+  });
+  const toolBVoice = useVoiceToText({
+    getTarget: () => ({ baseText: versionBAnswers[versionBQuestionIndex], index: versionBQuestionIndex }),
+    onAppendText: (nextText, target) => {
+      setVersionBAnswers((current) => current.map((answer, index) => (index === target.index ? nextText : answer)));
+    }
+  });
+
+  function dismissMicTutorial(version) {
+    setMicTutorialDismissed((current) => ({ ...current, [version]: true }));
+  }
   const phaseOneGoalText = useMemo(() => {
     const useCombinedGoals = phaseOneScreen === "summary" || phase === 2;
     if (useCombinedGoals) {
@@ -2211,13 +2231,6 @@ export default function App() {
     };
   }, []);
 
-  useEffect(
-    () => () => {
-      recognitionRef.current?.abort();
-    },
-    []
-  );
-
   function updateAnswer(value) {
     setAnswers((current) => current.map((answer, index) => (index === currentQuestion ? value : answer)));
   }
@@ -2495,85 +2508,8 @@ export default function App() {
   }
 
   function stopSpeechRecognition() {
-    if (recognitionRef.current) {
-      recognitionRef.current.onend = null;
-      recognitionRef.current.abort();
-      recognitionRef.current = null;
-    }
-    setListeningQuestion(null);
-    setSpeechDraft("");
-  }
-
-  function appendTranscript(questionKey, transcript) {
-    const cleanTranscript = transcript.trim();
-    if (!cleanTranscript) return;
-    const [version, rawIndex] = String(questionKey).split("-");
-    const questionIndex = Number(rawIndex);
-    if (version === "B") {
-      setVersionBAnswers((current) =>
-        current.map((answer, index) => {
-          if (index !== questionIndex) return answer;
-          const separator = answer.trim() ? " " : "";
-          return `${answer.trimEnd()}${separator}${cleanTranscript}`;
-        })
-      );
-      return;
-    }
-    setAnswers((current) =>
-      current.map((answer, index) => {
-        if (index !== questionIndex) return answer;
-        const separator = answer.trim() ? " " : "";
-        return `${answer.trimEnd()}${separator}${cleanTranscript}`;
-      })
-    );
-  }
-
-  function toggleSpeechInput(questionIndex) {
-    if (!speechSupported) {
-      return;
-    }
-
-    if (listeningQuestion === questionIndex) {
-      stopSpeechRecognition();
-      return;
-    }
-
-    stopSpeechRecognition();
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.onresult = (event) => {
-      let finalTranscript = "";
-      let interimTranscript = "";
-      Array.from(event.results)
-        .slice(event.resultIndex)
-        .forEach((result) => {
-          const transcript = result[0]?.transcript || "";
-          if (result.isFinal) {
-            finalTranscript += transcript;
-          } else {
-            interimTranscript += transcript;
-          }
-        });
-      appendTranscript(questionIndex, finalTranscript);
-      setSpeechDraft(interimTranscript.trim());
-    };
-    recognition.onerror = () => {
-      setListeningQuestion(null);
-      setSpeechDraft("");
-      recognitionRef.current = null;
-    };
-    recognition.onend = () => {
-      setListeningQuestion(null);
-      setSpeechDraft("");
-      recognitionRef.current = null;
-    };
-    recognitionRef.current = recognition;
-    setListeningQuestion(questionIndex);
-    recognition.start();
+    toolAVoice.cancel();
+    toolBVoice.cancel();
   }
 
   function prevQuestion() {
@@ -5929,31 +5865,44 @@ export default function App() {
                       ))}
                     </div>
                   ) : null}
-                  <div className="answer-input-wrap">
+                  <div
+                    className={`answer-input-wrap ${
+                      currentQuestion === 0 && !micTutorialDismissed.A ? "has-mic-tutorial" : ""
+                    }`}
+                  >
                     <textarea
                       placeholder="Type your answer here..."
-                      value={
-                        listeningQuestion === `A-${currentQuestion}` && speechDraft
-                          ? `${answers[currentQuestion].trimEnd()}${answers[currentQuestion].trim() ? " " : ""}${speechDraft}`
-                          : answers[currentQuestion]
-                      }
-                      onChange={(event) => {
-                        setSpeechDraft("");
-                        updateAnswer(event.target.value);
-                      }}
+                      value={answers[currentQuestion]}
+                      disabled={toolAVoice.state === "transcribing"}
+                      onChange={(event) => updateAnswer(event.target.value)}
                     />
                     <button
-                      className={`mic-btn ${listeningQuestion === `A-${currentQuestion}` ? "listening" : ""}`}
+                      className={`mic-btn ${toolAVoice.state === "recording" ? "listening" : ""}`}
                       type="button"
-                      disabled={!speechSupported}
-                      title={speechSupported ? "Use speech to text" : "Speech to text is not supported in this browser"}
-                      aria-label={
-                        listeningQuestion === `A-${currentQuestion}` ? "Stop speech to text" : "Start speech to text"
-                      }
-                      onClick={() => toggleSpeechInput(`A-${currentQuestion}`)}
+                      disabled={!toolAVoice.supported || toolAVoice.state === "transcribing"}
+                      title={toolAVoice.supported ? "Use speech to text" : "Speech to text is not supported in this browser"}
+                      aria-label={toolAVoice.state === "recording" ? "Stop speech to text" : "Start speech to text"}
+                      onClick={() => {
+                        dismissMicTutorial("A");
+                        toolAVoice.toggle();
+                      }}
                     >
-                      {listeningQuestion === `A-${currentQuestion}` ? "●" : "🎙"}
+                      {toolAVoice.state === "recording" ? "●" : toolAVoice.state === "transcribing" ? "…" : "🎙"}
                     </button>
+                    {toolAVoice.error ? (
+                      <p className="mic-error">{VOICE_ERROR_MESSAGES[toolAVoice.error]}</p>
+                    ) : null}
+                    {currentQuestion === 0 && !micTutorialDismissed.A ? (
+                      <div className="mic-tutorial">
+                        <p>
+                          Type your answer, or tap the mic to use speech-to-text — what you say gets transcribed and
+                          added to whatever you've already typed.
+                        </p>
+                        <button className="mic-tutorial-dismiss" type="button" onClick={() => dismissMicTutorial("A")}>
+                          Got it
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -5985,35 +5934,44 @@ export default function App() {
                 <div className="q-card">
                   <div className="q-num">{currentBQ.num}</div>
                   <div className="q-text">{currentBQ.text}</div>
-                  <div className="answer-input-wrap">
+                  <div
+                    className={`answer-input-wrap ${
+                      versionBQuestionIndex === 0 && !micTutorialDismissed.B ? "has-mic-tutorial" : ""
+                    }`}
+                  >
                     <textarea
                       placeholder="Type your answer here..."
-                      value={
-                        listeningQuestion === `B-${versionBQuestionIndex}` && speechDraft
-                          ? `${versionBAnswers[versionBQuestionIndex].trimEnd()}${
-                              versionBAnswers[versionBQuestionIndex].trim() ? " " : ""
-                            }${speechDraft}`
-                          : versionBAnswers[versionBQuestionIndex]
-                      }
-                      onChange={(event) => {
-                        setSpeechDraft("");
-                        updateVersionBAnswer(versionBQuestionIndex, event.target.value);
-                      }}
+                      value={versionBAnswers[versionBQuestionIndex]}
+                      disabled={toolBVoice.state === "transcribing"}
+                      onChange={(event) => updateVersionBAnswer(versionBQuestionIndex, event.target.value)}
                     />
                     <button
-                      className={`mic-btn ${listeningQuestion === `B-${versionBQuestionIndex}` ? "listening" : ""}`}
+                      className={`mic-btn ${toolBVoice.state === "recording" ? "listening" : ""}`}
                       type="button"
-                      disabled={!speechSupported}
-                      title={speechSupported ? "Use speech to text" : "Speech to text is not supported in this browser"}
-                      aria-label={
-                        listeningQuestion === `B-${versionBQuestionIndex}`
-                          ? "Stop speech to text"
-                          : "Start speech to text"
-                      }
-                      onClick={() => toggleSpeechInput(`B-${versionBQuestionIndex}`)}
+                      disabled={!toolBVoice.supported || toolBVoice.state === "transcribing"}
+                      title={toolBVoice.supported ? "Use speech to text" : "Speech to text is not supported in this browser"}
+                      aria-label={toolBVoice.state === "recording" ? "Stop speech to text" : "Start speech to text"}
+                      onClick={() => {
+                        dismissMicTutorial("B");
+                        toolBVoice.toggle();
+                      }}
                     >
-                      {listeningQuestion === `B-${versionBQuestionIndex}` ? "●" : "🎙"}
+                      {toolBVoice.state === "recording" ? "●" : toolBVoice.state === "transcribing" ? "…" : "🎙"}
                     </button>
+                    {toolBVoice.error ? (
+                      <p className="mic-error">{VOICE_ERROR_MESSAGES[toolBVoice.error]}</p>
+                    ) : null}
+                    {versionBQuestionIndex === 0 && !micTutorialDismissed.B ? (
+                      <div className="mic-tutorial">
+                        <p>
+                          Type your answer, or tap the mic to use speech-to-text — what you say gets transcribed and
+                          added to whatever you've already typed.
+                        </p>
+                        <button className="mic-tutorial-dismiss" type="button" onClick={() => dismissMicTutorial("B")}>
+                          Got it
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
                   <p className="version-b-photo-prompt">

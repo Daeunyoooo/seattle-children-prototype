@@ -34,16 +34,27 @@ The app talks to Supabase over the PostgREST API (no extra npm package required)
 
 Without env vars, behavior stays localStorage-only (same as GitHub Pages).
 
-## 3. Vercel
+## 3. Voice-to-text (Groq Whisper)
+
+The mic button on the Tool A / Tool B question fields records audio and sends it to `POST /api/transcribe`, which forwards it to Groq's hosted Whisper API (`whisper-large-v3-turbo`).
+
+1. Get an API key at [console.groq.com](https://console.groq.com).
+2. Set `GROQ_API_KEY` (server-side only — do **not** prefix with `VITE_`).
+3. Locally, the endpoint is served by `server.js`, so run `npm run dev:all` (not just `npm run dev`) to exercise it.
+
+Without `GROQ_API_KEY` set, the endpoint returns `503 transcription_not_configured` and the mic button shows a "voice input isn't set up" message; typing still works normally. GitHub Pages is static-only and has no `/api` routes, so voice input isn't available there.
+
+## 4. Vercel
 
 1. Import this GitHub repo at [vercel.com](https://vercel.com).
 2. Framework preset: Vite (or Other). Build command: `npm run build`. Output: `dist`.
 3. Add environment variables:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-4. Deploy. SPA routes (`/researcher`) are covered by [`vercel.json`](vercel.json).
+   - `GROQ_API_KEY`
+4. Deploy. SPA routes (`/researcher`) are covered by [`vercel.json`](vercel.json); `api/transcribe.js` is picked up automatically as a Serverless Function.
 
-## 4. Smoke test
+## 5. Smoke test
 
 1. Device A: open the Vercel URL, enter a participant ID, complete some answers (autosave). For Tool B, draw or upload a photo and wait for autosave.
 2. Device B: open `/researcher`, enter the same ID, **Load draft**.

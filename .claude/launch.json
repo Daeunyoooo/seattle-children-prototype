@@ -1,9 +1,10 @@
 {
-  "version": "1.0",
+  "version": "0.0.1",
   "configurations": [
     {
-      "name": "Preview",
-      "command": "npm run dev",
+      "name": "dev-all",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:all"],
       "port": 5174
     }
   ]
