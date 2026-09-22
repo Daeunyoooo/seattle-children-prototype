@@ -1175,6 +1175,20 @@ function makeDefaultSettings(length) {
   return Array.from({ length }, () => ({ tool: "free", colorIndex: 0, brushSize: 12, sticker: STICKER_OPTIONS[0] }));
 }
 
+function makeSeedValueSticker(emoji, canvas) {
+  return {
+    emoji,
+    x: (canvas.width || 580) / 2,
+    y: (canvas.height || 200) / 2,
+    size: 56,
+    rotation: 0
+  };
+}
+
+function hasSavedValueDrawing(drawings, valueName) {
+  return (drawings || []).some((item) => item?.valueName === valueName && item.pngDataUrl);
+}
+
 function getCompositeItemPosition(index, total) {
   const columns = total <= 2 ? Math.max(1, total) : total === 4 ? 2 : 3;
   const rows = Math.ceil(total / columns);
@@ -2095,18 +2109,25 @@ export default function App() {
       const previous = canvasStatesRef.current[index];
       canvas.width = canvas.offsetWidth || 580;
       const settings = drawSettings[index] || { tool: "free", colorIndex: 0, brushSize: 12 };
+      const keepPrevious = previous?.valueName === valueName;
+      const seedEmoji = phase2ValueIconMap.get(valueName) || getValueIcon(valueName);
+      const stickers = keepPrevious
+        ? previous.stickers || []
+        : hasSavedValueDrawing(perValueDrawingImagesRef.current, valueName)
+          ? []
+          : [makeSeedValueSticker(seedEmoji, canvas)];
       const state = {
         cv: canvas,
         ctx: canvas.getContext("2d"),
         tool: settings.tool,
-        sticker: settings.sticker || STICKER_OPTIONS[0],
+        sticker: settings.sticker || seedEmoji || STICKER_OPTIONS[0],
         color: COLORS[settings.colorIndex],
         brushSize: settings.brushSize,
-        strokes: previous?.valueName === valueName ? previous.strokes : [],
-        shapes: previous?.valueName === valueName ? previous.shapes : [],
-        stickers: previous?.valueName === valueName ? previous.stickers || [] : [],
-        selectedStickerIndex: previous?.valueName === valueName ? previous.selectedStickerIndex ?? null : null,
-        selectedObject: previous?.valueName === valueName ? previous.selectedObject ?? null : null,
+        strokes: keepPrevious ? previous.strokes : [],
+        shapes: keepPrevious ? previous.shapes : [],
+        stickers,
+        selectedStickerIndex: keepPrevious ? previous.selectedStickerIndex ?? null : null,
+        selectedObject: keepPrevious ? previous.selectedObject ?? null : null,
         drawing: false,
         valueName,
         valueIdx: index
@@ -2114,7 +2135,7 @@ export default function App() {
       drawStoredCanvas(state);
       return state;
     });
-  }, [drawValues, phase, phaseTwoScreen]);
+  }, [drawValues, phase, phase2ValueIconMap, phaseTwoScreen]);
 
   useEffect(() => {
     setVersionBPhotoPanel(null);

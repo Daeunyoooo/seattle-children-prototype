@@ -1065,18 +1065,50 @@ function RectangularPuzzleView({wheels,goal,onEditGoal,hovered,setHovered,hovere
                     <path d={pPath} fill={`url(#rg-${w.id})`} stroke="rgba(255,255,255,0.88)" strokeWidth={isHover||isDrag?'2.5':'1.8'} style={{filter:isHover?'brightness(1.07)':'none',transition:'filter 0.18s'}}/>
                   )}
                   {puzzleFillSrc&&<>
-                    <rect x={PS/2-PS*0.40} y={PS/2-27*ts} width={PS*0.80} height={lw.length>lh?30*ts:18*ts} rx={5} fill="rgba(255,255,255,0.82)" style={{pointerEvents:'none'}}/>
-                    <rect x={PS/2-PS*0.36} y={PS/2+5*ts} width={PS*0.72} height={14*ts} rx={5} fill="rgba(255,255,255,0.82)" style={{pointerEvents:'none'}}/>
+                    <rect x={PS/2-PS*0.40} y={PS/2-27*ts} width={PS*0.80} height={lw.length>lh?30*ts:18*ts} rx={5} fill="rgba(255,255,255,0.82)" style={{pointerEvents:'none',opacity:isHover&&!isDrag?0:1}}/>
+                    <rect x={PS/2-PS*0.36} y={PS/2+5*ts} width={PS*0.72} height={14*ts} rx={5} fill="rgba(255,255,255,0.82)" style={{pointerEvents:'none',opacity:isHover&&!isDrag?0:1}}/>
                   </>}
-                  <text x={PS/2} y={PS/2-18*ts} textAnchor="middle" dominantBaseline="middle" fontSize={11*ts} fontWeight="700" fill={P.textMain} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF}}>{lw.slice(0,lh).join(' ')}</text>
-                  {lw.length>lh&&<text x={PS/2} y={PS/2-4*ts} textAnchor="middle" dominantBaseline="middle" fontSize={11*ts} fontWeight="700" fill={P.textMain} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF}}>{lw.slice(lh).join(' ')}</text>}
-                  <text x={PS/2} y={PS/2+12*ts} textAnchor="middle" dominantBaseline="middle" fontSize={8.5*ts} fontWeight="600" fill={P.textMid} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF}}>
+                  <text x={PS/2} y={PS/2-18*ts} textAnchor="middle" dominantBaseline="middle" fontSize={11*ts} fontWeight="700" fill={P.textMain} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF,opacity:isHover&&!isDrag?0:1}}>{lw.slice(0,lh).join(' ')}</text>
+                  {lw.length>lh&&<text x={PS/2} y={PS/2-4*ts} textAnchor="middle" dominantBaseline="middle" fontSize={11*ts} fontWeight="700" fill={P.textMain} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF,opacity:isHover&&!isDrag?0:1}}>{lw.slice(lh).join(' ')}</text>}
+                  <text x={PS/2} y={PS/2+12*ts} textAnchor="middle" dominantBaseline="middle" fontSize={8.5*ts} fontWeight="600" fill={P.textMid} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF,opacity:isHover&&!isDrag?0:1}}>
                     {shortStakeholder(w.stakeholder).length>20?shortStakeholder(w.stakeholder).substring(0,18)+'…':shortStakeholder(w.stakeholder)}
                   </text>
                 </g>
               )
             })}
           </svg>
+          {hoveredWheel && !draggingId ? (() => {
+            const placed = positionById.get(hoveredWheel.id)
+            if (!placed?.pos) return null
+            const off = rectOffsets[hoveredWheel.id] || {x:0,y:0}
+            const x = placed.pos.c * PS + off.x
+            const y = placed.pos.r * PS + off.y
+            return (
+              <div
+                style={{
+                  position:'absolute',
+                  left:x + PS / 2,
+                  top:y + PS / 2 - 6,
+                  width:PS * 0.84,
+                  transform:'translate(-50%, -50%)',
+                  padding:'7px 8px',
+                  borderRadius:'8px',
+                  background:'rgba(255,255,255,0.96)',
+                  boxShadow:'0 6px 16px rgba(60,40,80,0.16)',
+                  color:P.textMain,
+                  fontSize:hoveredWheel.label.length > 48 ? 11 : 12.5,
+                  fontWeight:700,
+                  lineHeight:1.3,
+                  textAlign:'center',
+                  pointerEvents:'none',
+                  zIndex:550,
+                  wordBreak:'break-word'
+                }}
+              >
+                {hoveredWheel.label}
+              </div>
+            )
+          })() : null}
           {(()=>{const th=PS*.15,tw=PS*.30,gbPath=puzzleBoxPath(PS*layout.goalRect.size,PS*layout.goalRect.size,th,tw),goalLeft=layout.goalRect.c*PS,goalTop=layout.goalRect.r*PS;return(<>
             <svg viewBox={`${-th-4} ${-th-4} ${PS*2+2*(th+4)} ${PS*2+2*(th+4)}`} width={PS*2+2*(th+4)} height={PS*2+2*(th+4)}
               style={{position:'absolute',left:goalLeft-(th+4),top:goalTop-(th+4),overflow:'visible',pointerEvents:'none',zIndex:499}}>
