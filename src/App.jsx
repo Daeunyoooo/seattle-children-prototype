@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ValueEmojiPicker from "./ValueEmojiPicker.jsx";
 import { useVoiceToText } from "./lib/useVoiceToText.js";
 import {
@@ -1185,10 +1185,6 @@ function makeSeedValueSticker(emoji, canvas) {
   };
 }
 
-function hasSavedValueDrawing(drawings, valueName) {
-  return (drawings || []).some((item) => item?.valueName === valueName && item.pngDataUrl);
-}
-
 function getCompositeItemPosition(index, total) {
   const columns = total <= 2 ? Math.max(1, total) : total === 4 ? 2 : 3;
   const rows = Math.ceil(total / columns);
@@ -1403,6 +1399,7 @@ export default function App() {
   const [micTutorialDismissed, setMicTutorialDismissed] = useState({ A: false, B: false });
   const [pictureTitle, setPictureTitle] = useState("");
   const [drawValues, setDrawValues] = useState([]);
+  const [drawCanvasEpoch, setDrawCanvasEpoch] = useState(0);
   const [drawSettings, setDrawSettings] = useState(() => makeDefaultSettings(0));
   const [legendThumbs, setLegendThumbs] = useState([]);
   const [componentTray, setComponentTray] = useState([]);
@@ -2100,22 +2097,22 @@ export default function App() {
     });
   }, []);
 
-  useEffect(() => {
-    if (phase !== 2 || phaseTwoScreen !== "shapes") return;
+  useLayoutEffect(() => {
+    if (phase !== 2 || phaseTwoScreen !== "shapes") {
+      if (drawCanvasEpoch !== 0) setDrawCanvasEpoch(0);
+      return;
+    }
 
-    canvasStatesRef.current = drawValues.map((valueName, index) => {
+    const previousStates = canvasStatesRef.current;
+    const nextStates = drawValues.map((valueName, index) => {
       const canvas = drawCanvasRefs.current[index];
-      if (!canvas) return null;
-      const previous = canvasStatesRef.current[index];
+      if (!canvas) return previousStates[index] ?? null;
+      const previous = previousStates[index];
       canvas.width = canvas.offsetWidth || 580;
+      if (!canvas.height) canvas.height = 200;
       const settings = drawSettings[index] || { tool: "free", colorIndex: 0, brushSize: 12 };
       const keepPrevious = previous?.valueName === valueName;
       const seedEmoji = phase2ValueIconMap.get(valueName) || getValueIcon(valueName);
-      const stickers = keepPrevious
-        ? previous.stickers || []
-        : hasSavedValueDrawing(perValueDrawingImagesRef.current, valueName)
-          ? []
-          : [makeSeedValueSticker(seedEmoji, canvas)];
       const state = {
         cv: canvas,
         ctx: canvas.getContext("2d"),
@@ -2125,7 +2122,7 @@ export default function App() {
         brushSize: settings.brushSize,
         strokes: keepPrevious ? previous.strokes : [],
         shapes: keepPrevious ? previous.shapes : [],
-        stickers,
+        stickers: keepPrevious ? previous.stickers || [] : [makeSeedValueSticker(seedEmoji, canvas)],
         selectedStickerIndex: keepPrevious ? previous.selectedStickerIndex ?? null : null,
         selectedObject: keepPrevious ? previous.selectedObject ?? null : null,
         drawing: false,
@@ -2135,7 +2132,19 @@ export default function App() {
       drawStoredCanvas(state);
       return state;
     });
-  }, [drawValues, phase, phase2ValueIconMap, phaseTwoScreen]);
+    canvasStatesRef.current = nextStates;
+
+    if (
+      drawCanvasEpoch < 12 &&
+      drawValues.length > 0 &&
+      nextStates.some((state, index) => drawValues[index] && !state)
+    ) {
+      const frame = window.requestAnimationFrame(() => {
+        setDrawCanvasEpoch((current) => current + 1);
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+  }, [drawCanvasEpoch, drawValues, phase, phase2ValueIconMap, phaseTwoScreen]);
 
   useEffect(() => {
     setVersionBPhotoPanel(null);
