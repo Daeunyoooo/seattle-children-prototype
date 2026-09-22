@@ -30,40 +30,27 @@ const VOICE_ERROR_MESSAGES = {
 const QUESTIONS = [
   {
     num: "Q1",
-    text: "Think of a recent favorite memory. It can be something big or really small.",
-    hints: ["Why was it meaningful or important to you?"]
+    text: "Think of a recent favorite memory. It can be something big or really small."
   },
   {
     num: "Q2",
-    text: "Please walk me through what a typical day looks like for you.",
-    hints: ["Who are the most important people in your life?"]
+    text: "Please walk me through what a typical day looks like for you."
   },
   {
     num: "Q3",
-    text: "What are some of the ways a typical day could be (or become) challenging?",
-    hints: ["Do the people you just mentioned help you on those days? How?"]
+    text: "What are some of the ways a typical day could be (or become) challenging?"
   },
   {
     num: "Q4",
-    text: "What does a perfect day look like to you?",
-    hints: ["What do you think a perfect day might look like in the future, when you are a young adult?"]
+    text: "What does a perfect day look like to you?"
   },
   {
     num: "Q5",
-    text: "What about your future worries you the most?",
-    hints: ["How do you think things might be different if you didn't have to worry about that?"]
+    text: "What about your future worries you the most?"
   }
 ];
 
-const CAREGIVER_QUESTIONS = QUESTIONS.map((question) => {
-  if (question.num === "Q4") {
-    return {
-      ...question,
-      hints: ["What do you think a perfect day might look like in the future?"]
-    };
-  }
-  return question;
-});
+const CAREGIVER_QUESTIONS = QUESTIONS;
 
 const VERSION_B_QUESTIONS = [
   {
@@ -2968,7 +2955,6 @@ export default function App() {
         questions: currentToolAQuestions.map((question, index) => ({
           num: question.num,
           text: question.text,
-          hints: question.hints,
           answer: answers[index] || ""
         })),
         identifiedValues: exportedToolAValues,
@@ -5888,13 +5874,6 @@ export default function App() {
                 <div className="q-card">
                   <div className="q-num">{currentQ.num}</div>
                   <div className="q-text">{currentQ.text}</div>
-                  {currentQ.hints.length > 0 ? (
-                    <div className="q-hints">
-                      {currentQ.hints.map((hint) => (
-                        <div key={hint}>· {hint}</div>
-                      ))}
-                    </div>
-                  ) : null}
                   <div
                     className={`answer-input-wrap ${
                       currentQuestion === 0 && !micTutorialDismissed.A ? "has-mic-tutorial" : ""
