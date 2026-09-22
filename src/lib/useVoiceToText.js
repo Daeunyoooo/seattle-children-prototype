@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
 const AUTO_STOP_MS = 90000;
+const LIVE_TIMESLICE_MS = 1800;
+const MIN_LIVE_BYTES = 2500;
 
 function pickMimeType() {
   if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) return "";
@@ -14,8 +16,40 @@ function appendText(baseText, transcript) {
   return `${base.trimEnd()}${separator}${transcript}`;
 }
 
-// Records audio, sends it to POST /api/transcribe, and appends the returned
-// text onto whatever the field already contained ("base") via onAppendText.
+async function transcribeBlob(blob, mimeType) {
+  const response = await fetch("/api/transcribe", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-Audio-Type": mimeType || "audio/webm"
+    },
+    body: blob
+  });
+
+  if (response.status === 503) {
+    const error = new Error("not_configured");
+    error.code = "not_configured";
+    throw error;
+  }
+
+  if (!response.ok) {
+    const error = new Error("transcription_failed");
+    error.code = "transcription_failed";
+    throw error;
+  }
+
+  const data = await response.json();
+  if (!data.ok) {
+    const error = new Error("transcription_failed");
+    error.code = "transcription_failed";
+    throw error;
+  }
+
+  return String(data.text || "").trim();
+}
+
+// Records audio, streams growing clips to POST /api/transcribe while the mic
+// is on, and appends returned text onto the field's starting value.
 export function useVoiceToText({ getTarget, onAppendText, disabled } = {}) {
   const [state, setState] = useState("idle"); // idle | recording | transcribing
   const [error, setError] = useState(null);
@@ -26,6 +60,11 @@ export function useVoiceToText({ getTarget, onAppendText, disabled } = {}) {
   const mimeTypeRef = useRef("");
   const targetRef = useRef({ baseText: "" });
   const autoStopTimerRef = useRef(null);
+  const sessionRef = useRef(0);
+  const liveBusyRef = useRef(false);
+  const liveQueuedRef = useRef(false);
+  const stoppedRef = useRef(false);
+  const hadLiveTextRef = useRef(false);
 
   const supported =
     typeof window !== "undefined" &&
@@ -45,9 +84,13 @@ export function useVoiceToText({ getTarget, onAppendText, disabled } = {}) {
   }, []);
 
   const cancel = useCallback(() => {
+    sessionRef.current += 1;
+    liveQueuedRef.current = false;
+    stoppedRef.current = true;
     clearAutoStopTimer();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.ondataavailable = null;
       mediaRecorderRef.current.stop();
     }
     mediaRecorderRef.current = null;
@@ -62,17 +105,72 @@ export function useVoiceToText({ getTarget, onAppendText, disabled } = {}) {
     if (disabled) cancel();
   }, [disabled, cancel]);
 
+  const applyTranscript = useCallback(
+    (text) => {
+      if (!text) return false;
+      hadLiveTextRef.current = true;
+      onAppendText?.(appendText(targetRef.current.baseText, text), targetRef.current);
+      return true;
+    },
+    [onAppendText]
+  );
+
+  const transcribeCurrent = useCallback(
+    async (sessionId, { final = false } = {}) => {
+      const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || "audio/webm" });
+      if (!blob.size || (!final && blob.size < MIN_LIVE_BYTES)) return "";
+      try {
+        const text = await transcribeBlob(blob, mimeTypeRef.current);
+        if (sessionRef.current !== sessionId) return "";
+        return text;
+      } catch (error) {
+        if (sessionRef.current !== sessionId) return "";
+        if (final) throw error;
+        return "";
+      }
+    },
+    []
+  );
+
+  const pumpLiveTranscript = useCallback(async (sessionId) => {
+    if (liveBusyRef.current) {
+      liveQueuedRef.current = true;
+      return;
+    }
+    liveBusyRef.current = true;
+    try {
+      do {
+        liveQueuedRef.current = false;
+        if (sessionRef.current !== sessionId || stoppedRef.current) return;
+        const text = await transcribeCurrent(sessionId);
+        if (sessionRef.current !== sessionId || stoppedRef.current) return;
+        applyTranscript(text);
+      } while (liveQueuedRef.current && sessionRef.current === sessionId && !stoppedRef.current);
+    } finally {
+      liveBusyRef.current = false;
+    }
+  }, [applyTranscript, transcribeCurrent]);
+
   const start = useCallback(async () => {
     if (!supported || disabled || state !== "idle") return;
 
     setError(null);
     targetRef.current = getTarget ? getTarget() : { baseText: "" };
+    stoppedRef.current = false;
+    liveQueuedRef.current = false;
+    hadLiveTextRef.current = false;
+    const sessionId = sessionRef.current + 1;
+    sessionRef.current = sessionId;
 
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setError("permission_denied");
+      return;
+    }
+    if (sessionRef.current !== sessionId) {
+      stream.getTracks().forEach((track) => track.stop());
       return;
     }
     mediaStreamRef.current = stream;
@@ -92,15 +190,26 @@ export function useVoiceToText({ getTarget, onAppendText, disabled } = {}) {
     chunksRef.current = [];
     recorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
+      if (!stoppedRef.current && recorder.state === "recording") {
+        void pumpLiveTranscript(sessionId);
+      }
     };
 
     recorder.onstop = async () => {
       clearAutoStopTimer();
       stopTracks();
+      mediaRecorderRef.current = null;
+      stoppedRef.current = true;
+      liveQueuedRef.current = false;
+
+      if (sessionRef.current !== sessionId) {
+        chunksRef.current = [];
+        setState("idle");
+        return;
+      }
+
       const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || "audio/webm" });
       chunksRef.current = [];
-      mediaRecorderRef.current = null;
-
       if (!blob.size) {
         setState("idle");
         return;
@@ -108,61 +217,52 @@ export function useVoiceToText({ getTarget, onAppendText, disabled } = {}) {
 
       setState("transcribing");
       try {
-        const response = await fetch("/api/transcribe", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "X-Audio-Type": mimeTypeRef.current || "audio/webm"
-          },
-          body: blob
-        });
-
-        if (response.status === 503) {
-          setError("not_configured");
+        const text = await transcribeBlob(blob, mimeTypeRef.current);
+        if (sessionRef.current !== sessionId) {
           setState("idle");
           return;
         }
-
-        if (!response.ok) {
-          setError("transcription_failed");
-          setState("idle");
-          return;
-        }
-
-        const data = await response.json();
-        if (!data.ok) {
-          setError("transcription_failed");
-          setState("idle");
-          return;
-        }
-
-        const text = String(data.text || "").trim();
-        if (!text) {
+        if (text) {
+          applyTranscript(text);
+        } else if (!hadLiveTextRef.current) {
           setError("no_speech");
+        }
+        setState("idle");
+      } catch (error) {
+        if (sessionRef.current !== sessionId) {
           setState("idle");
           return;
         }
-
-        onAppendText?.(appendText(targetRef.current.baseText, text), targetRef.current);
-        setState("idle");
-      } catch {
-        setError("transcription_failed");
+        setError(error.code || "transcription_failed");
         setState("idle");
       }
     };
 
     mediaRecorderRef.current = recorder;
-    recorder.start();
+    recorder.start(LIVE_TIMESLICE_MS);
     setState("recording");
 
     autoStopTimerRef.current = setTimeout(() => {
+      stoppedRef.current = true;
+      liveQueuedRef.current = false;
       if (mediaRecorderRef.current?.state === "recording") {
         mediaRecorderRef.current.stop();
       }
     }, AUTO_STOP_MS);
-  }, [supported, disabled, state, getTarget, onAppendText, stopTracks, clearAutoStopTimer]);
+  }, [
+    supported,
+    disabled,
+    state,
+    getTarget,
+    stopTracks,
+    clearAutoStopTimer,
+    pumpLiveTranscript,
+    applyTranscript
+  ]);
 
   const stop = useCallback(() => {
+    stoppedRef.current = true;
+    liveQueuedRef.current = false;
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
     }

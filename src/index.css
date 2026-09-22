@@ -780,6 +780,20 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(226, 75, 74, 0.12);
 }
 
+.answer-input-wrap.is-listening textarea {
+  border-color: #e24b4a;
+}
+
+.mic-live-hint {
+  position: absolute;
+  right: 48px;
+  bottom: 16px;
+  margin: 0;
+  font-size: 12px;
+  color: #e24b4a;
+  pointer-events: none;
+}
+
 .mic-btn:disabled {
   opacity: 0.35;
 }

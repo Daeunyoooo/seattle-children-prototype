@@ -5868,12 +5868,12 @@ export default function App() {
                   <div
                     className={`answer-input-wrap ${
                       currentQuestion === 0 && !micTutorialDismissed.A ? "has-mic-tutorial" : ""
-                    }`}
+                    } ${toolAVoice.state === "recording" ? "is-listening" : ""}`}
                   >
                     <textarea
                       placeholder="Type your answer here..."
                       value={answers[currentQuestion]}
-                      disabled={toolAVoice.state === "transcribing"}
+                      readOnly={toolAVoice.state !== "idle"}
                       onChange={(event) => updateAnswer(event.target.value)}
                     />
                     <button
@@ -5889,14 +5889,16 @@ export default function App() {
                     >
                       {toolAVoice.state === "recording" ? "●" : toolAVoice.state === "transcribing" ? "…" : "🎙"}
                     </button>
-                    {toolAVoice.error ? (
+                    {toolAVoice.state === "recording" ? (
+                      <p className="mic-live-hint">Listening…</p>
+                    ) : toolAVoice.error ? (
                       <p className="mic-error">{VOICE_ERROR_MESSAGES[toolAVoice.error]}</p>
                     ) : null}
                     {currentQuestion === 0 && !micTutorialDismissed.A ? (
                       <div className="mic-tutorial">
                         <p>
-                          Type your answer, or tap the mic to use speech-to-text — what you say gets transcribed and
-                          added to whatever you've already typed.
+                          Type your answer, or tap the mic to use speech-to-text. Words appear as you speak; tap the
+                          mic again when you are done.
                         </p>
                         <button className="mic-tutorial-dismiss" type="button" onClick={() => dismissMicTutorial("A")}>
                           Got it
@@ -5937,12 +5939,12 @@ export default function App() {
                   <div
                     className={`answer-input-wrap ${
                       versionBQuestionIndex === 0 && !micTutorialDismissed.B ? "has-mic-tutorial" : ""
-                    }`}
+                    } ${toolBVoice.state === "recording" ? "is-listening" : ""}`}
                   >
                     <textarea
                       placeholder="Type your answer here..."
                       value={versionBAnswers[versionBQuestionIndex]}
-                      disabled={toolBVoice.state === "transcribing"}
+                      readOnly={toolBVoice.state !== "idle"}
                       onChange={(event) => updateVersionBAnswer(versionBQuestionIndex, event.target.value)}
                     />
                     <button
@@ -5958,14 +5960,16 @@ export default function App() {
                     >
                       {toolBVoice.state === "recording" ? "●" : toolBVoice.state === "transcribing" ? "…" : "🎙"}
                     </button>
-                    {toolBVoice.error ? (
+                    {toolBVoice.state === "recording" ? (
+                      <p className="mic-live-hint">Listening…</p>
+                    ) : toolBVoice.error ? (
                       <p className="mic-error">{VOICE_ERROR_MESSAGES[toolBVoice.error]}</p>
                     ) : null}
                     {versionBQuestionIndex === 0 && !micTutorialDismissed.B ? (
                       <div className="mic-tutorial">
                         <p>
-                          Type your answer, or tap the mic to use speech-to-text — what you say gets transcribed and
-                          added to whatever you've already typed.
+                          Type your answer, or tap the mic to use speech-to-text. Words appear as you speak; tap the
+                          mic again when you are done.
                         </p>
                         <button className="mic-tutorial-dismiss" type="button" onClick={() => dismissMicTutorial("B")}>
                           Got it
