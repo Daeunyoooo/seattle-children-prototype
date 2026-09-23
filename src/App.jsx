@@ -613,8 +613,28 @@ function normalizeAiValuesPayload(payload) {
   };
 }
 
-function createPhaseOneToolOrder() {
-  return Math.random() < 0.5 ? ["A", "B"] : ["B", "A"];
+function normalizePhaseOneToolOrder(order) {
+  const first = order?.[0] === "B" ? "B" : order?.[0] === "A" ? "A" : null;
+  const second = order?.[1] === "A" || order?.[1] === "B" ? order[1] : null;
+  if (first && second && first !== second) return [first, second];
+  return ["A", "B"];
+}
+
+function resolvePhaseOneScreen(session, options = {}, targetTool = "A") {
+  const allowed = new Set(["tools", "questions", "values", "summary"]);
+  const candidates = [
+    options.screen,
+    session?.phaseOne?.currentScreen,
+    session?.phaseOne?.toolProgress?.[targetTool]?.screen
+  ];
+  for (const screen of candidates) {
+    if (allowed.has(screen)) return screen;
+  }
+  const hasProgress =
+    (session?.phaseOne?.completedTools || []).length > 0 ||
+    (session?.toolA?.questions || []).some((question) => question.answer?.trim()) ||
+    (session?.toolB?.questions || []).some((question) => question.answer?.trim());
+  return hasProgress ? "questions" : "tools";
 }
 
 function getValueIcon(value) {
@@ -1297,12 +1317,6 @@ function ImageLibrary({ items, onAdd, onSelect, activeUrl, emptyHint, descriptio
 }
 
 export default function App() {
-  const initialPhaseOneSessionRef = useRef(null);
-  if (!initialPhaseOneSessionRef.current) {
-    const order = createPhaseOneToolOrder();
-    initialPhaseOneSessionRef.current = { order, firstTool: order[0] };
-  }
-
   const researcherMode = isResearcherPath();
   const [participantSessionId, setParticipantSessionId] = useState(() => createInitialParticipantSessionId());
   const [participantPassword, setParticipantPassword] = useState("");
@@ -1337,10 +1351,10 @@ export default function App() {
   const [aiSuggestedValues, setAiSuggestedValues] = useState([]);
   const [newAiValue, setNewAiValue] = useState("");
   const [phase, setPhase] = useState(1);
-  const [phaseOneToolOrder] = useState(() => initialPhaseOneSessionRef.current.order);
-  const [phaseOneVersion, setPhaseOneVersion] = useState(() => initialPhaseOneSessionRef.current.firstTool);
+  const [phaseOneToolOrder, setPhaseOneToolOrder] = useState(["A", "B"]);
+  const [phaseOneVersion, setPhaseOneVersion] = useState("A");
   const [completedPhaseOneTools, setCompletedPhaseOneTools] = useState([]);
-  const [phaseOneScreen, setPhaseOneScreen] = useState("questions");
+  const [phaseOneScreen, setPhaseOneScreen] = useState("tools");
   const [phaseOneToolProgress, setPhaseOneToolProgress] = useState(() => ({
     A: { screen: "questions", questionIndex: 0 },
     B: { screen: "questions", questionIndex: 0 }
@@ -1528,7 +1542,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (phase !== 1 || phaseOneScreen === "summary") return;
+    if (phase !== 1 || phaseOneScreen === "summary" || phaseOneScreen === "tools") return;
     setPhaseOneToolProgress((current) => ({
       ...current,
       [phaseOneVersion]: {
@@ -1857,12 +1871,21 @@ export default function App() {
   function getPhaseOneToolStepState(tool) {
     if (phaseOneScreen === "summary") return "done";
     if (completedPhaseOneTools.includes(tool)) return "done";
+    if (phaseOneScreen === "tools") return "";
     if (phaseOneVersion === tool) return "active";
     return "";
   }
 
+  function startPhaseOneTool(tool) {
+    if (tool !== "A" && tool !== "B") return;
+    if (completedPhaseOneTools.length === 0) {
+      setPhaseOneToolOrder([tool, tool === "A" ? "B" : "A"]);
+    }
+    switchPhaseOneTool(tool);
+  }
+
   function switchPhaseOneTool(tool) {
-    if (tool === phaseOneVersion && phaseOneScreen !== "summary") return;
+    if (tool === phaseOneVersion && phaseOneScreen !== "summary" && phaseOneScreen !== "tools") return;
 
     stopSpeechRecognition();
 
@@ -2531,6 +2554,10 @@ export default function App() {
 
   function prevQuestion() {
     stopSpeechRecognition();
+    if (currentQuestion === 0 && completedPhaseOneTools.length === 0) {
+      setPhaseOneScreen("tools");
+      return;
+    }
     setCurrentQuestion((current) => Math.max(0, current - 1));
   }
 
@@ -2737,6 +2764,10 @@ export default function App() {
 
   function prevVersionBQuestion() {
     stopSpeechRecognition();
+    if (versionBQuestionIndex === 0 && completedPhaseOneTools.length === 0) {
+      setPhaseOneScreen("tools");
+      return;
+    }
     setVersionBQuestionIndex((current) => Math.max(0, current - 1));
   }
 
@@ -3278,14 +3309,7 @@ export default function App() {
       restorePhotoFromMetadata(session.toolB?.questions?.[index]?.photo)
     );
     const restoredToolProgress = session.phaseOne?.toolProgress || {};
-    const preferredScreen =
-      options.screen ||
-      (restoredToolProgress[targetTool]?.screen === "values" ||
-      restoredToolProgress[targetTool]?.screen === "questions"
-        ? restoredToolProgress[targetTool].screen
-        : session.phaseOne?.currentScreen === "summary"
-          ? "summary"
-          : "questions");
+    const preferredScreen = resolvePhaseOneScreen(session, options, targetTool);
     const rawRestoredBoardItems =
       session.toolB?.boardItems?.length > 0
         ? session.toolB.boardItems.map((item) =>
@@ -3354,6 +3378,7 @@ export default function App() {
       : [];
     const restoredCurrentQuestionIndex = Math.max(0, Number(session.phaseOne?.currentQuestionIndex ?? 0) || 0);
     setCompletedPhaseOneTools(restoredCompletedTools);
+    setPhaseOneToolOrder(normalizePhaseOneToolOrder(session.phaseOne?.toolOrder));
     setParticipantIntroComplete(true);
     setPhase(options.phase ?? session.phase ?? session.phaseTwo?.phase ?? 1);
     setPhaseOneVersion(targetTool);
@@ -3444,9 +3469,7 @@ export default function App() {
       );
       return;
     }
-    applyParticipantSession(session, {
-      screen: session.phaseOne?.currentScreen || "questions"
-    });
+    applyParticipantSession(session);
     setResearcherFocusRole(normalizeParticipantRole(session.role) === "caregiver" ? "caregiver" : "youth");
     setResearcherDraftTick((current) => current + 1);
     setResearcherStatus(
@@ -4821,9 +4844,19 @@ export default function App() {
     setParticipantPasswordError("");
     const savedDraft = readParticipantSessionDraft(participantSessionId);
     if (savedDraft) {
-      applyParticipantSession(savedDraft, { screen: savedDraft.phaseOne?.currentScreen || "questions" });
+      applyParticipantSession(savedDraft);
       return;
     }
+    setPhaseOneToolOrder(["A", "B"]);
+    setPhaseOneVersion("A");
+    setPhaseOneScreen("tools");
+    setCompletedPhaseOneTools([]);
+    setPhaseOneToolProgress({
+      A: { screen: "questions", questionIndex: 0 },
+      B: { screen: "questions", questionIndex: 0 }
+    });
+    setCurrentQuestion(0);
+    setVersionBQuestionIndex(0);
     setParticipantRole(normalizeParticipantRole(participantRole));
     setLinkedYouthParticipantId("");
     setLinkedYouthValues([]);
@@ -5793,14 +5826,18 @@ export default function App() {
                 <span className="phase1-step-group" key={tool}>
                   {index > 0 ? (
                     <span className="phase1-step-sep" aria-hidden="true">
-                      →
+                      {phaseOneScreen === "tools" ? "·" : "→"}
                     </span>
                   ) : null}
                   <button
                     type="button"
                     className={`phase1-step ${getPhaseOneToolStepState(tool)}`}
-                    aria-current={phaseOneVersion === tool && phaseOneScreen !== "summary" ? "step" : undefined}
-                    onClick={() => switchPhaseOneTool(tool)}
+                    aria-current={
+                      phaseOneVersion === tool && phaseOneScreen !== "summary" && phaseOneScreen !== "tools"
+                        ? "step"
+                        : undefined
+                    }
+                    onClick={() => startPhaseOneTool(tool)}
                   >
                     Tool {tool}
                   </button>
@@ -5853,7 +5890,24 @@ export default function App() {
         role="tabpanel"
         aria-labelledby="tab-phase-1"
       >
-        {phaseOneScreen === "questions" ? (
+        {phaseOneScreen === "tools" ? (
+          <div className="screen active">
+            <p className="phase2-tool-intro">
+              Start with the tool your researcher asks you to use first. When you finish that tool, you will continue
+              to the other tool and then to the summary.
+            </p>
+            <div className="tool-entry-grid tool-entry-grid--two">
+              <button className="tool-entry-card active-tool" type="button" onClick={() => startPhaseOneTool("A")}>
+                <span>Tool A</span>
+                Interview questions
+              </button>
+              <button className="tool-entry-card active-tool" type="button" onClick={() => startPhaseOneTool("B")}>
+                <span>Tool B</span>
+                Stories and photos
+              </button>
+            </div>
+          </div>
+        ) : phaseOneScreen === "questions" ? (
           <div className="screen active">
             {phaseOneVersion === "A" ? (
               <>
@@ -5918,7 +5972,11 @@ export default function App() {
                 </div>
 
                 <div className="nav-row">
-                  <button type="button" onClick={prevQuestion} disabled={currentQuestion === 0}>
+                  <button
+                    type="button"
+                    onClick={prevQuestion}
+                    disabled={currentQuestion === 0 && completedPhaseOneTools.length > 0}
+                  >
                     ← Back
                   </button>
                   <button className="primary" type="button" onClick={nextQuestion}>
@@ -6064,7 +6122,11 @@ export default function App() {
                 </div>
 
                 <div className="nav-row">
-                  <button type="button" onClick={prevVersionBQuestion} disabled={versionBQuestionIndex === 0}>
+                  <button
+                    type="button"
+                    onClick={prevVersionBQuestion}
+                    disabled={versionBQuestionIndex === 0 && completedPhaseOneTools.length > 0}
+                  >
                     ← Back
                   </button>
                   <button className="primary" type="button" onClick={nextVersionBQuestion}>
