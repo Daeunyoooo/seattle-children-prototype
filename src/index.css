@@ -2395,6 +2395,15 @@ textarea:focus {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.tool-entry-card--title-only {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+}
+
 .tool-entry-card {
   min-height: 150px;
   padding: 18px 14px;

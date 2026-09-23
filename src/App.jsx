@@ -5897,13 +5897,11 @@ export default function App() {
               to the other tool and then to the summary.
             </p>
             <div className="tool-entry-grid tool-entry-grid--two">
-              <button className="tool-entry-card active-tool" type="button" onClick={() => startPhaseOneTool("A")}>
-                <span>Tool A</span>
-                Interview questions
+              <button className="tool-entry-card tool-entry-card--title-only active-tool" type="button" onClick={() => startPhaseOneTool("A")}>
+                Tool A
               </button>
-              <button className="tool-entry-card active-tool" type="button" onClick={() => startPhaseOneTool("B")}>
-                <span>Tool B</span>
-                Stories and photos
+              <button className="tool-entry-card tool-entry-card--title-only active-tool" type="button" onClick={() => startPhaseOneTool("B")}>
+                Tool B
               </button>
             </div>
           </div>
