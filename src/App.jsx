@@ -6613,6 +6613,7 @@ export default function App() {
               embedded
               youthValues={phase2YouthValueItems}
               caregiverValues={phase2CaregiverValueItems}
+              viewerRole={participantRole}
             />
           </div>
         ) : phaseTwoScreen === "shapes" ? (

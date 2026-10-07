@@ -281,7 +281,10 @@ const STAKEHOLDER_FILTERS=[
   {id:'clinician',label:'What does my clinician value?',matches:w=>w.stakeholder.toLowerCase().includes('clinician')},
 ]
 const pieceMatchesFilters=(w,sf)=>sf.length===0||w.stakeholder.toLowerCase().includes('everyone')||STAKEHOLDER_FILTERS.filter(f=>sf.includes(f.id)).some(f=>f.matches(w))
-const shortStakeholder=s=>s.replace('Patient','Me').replace(/\s*&\s*/g,', ')
+function formatStakeholderLabel(stakeholder, viewerRole){
+  const patientLabel=viewerRole==='caregiver'?'Youth':'Me'
+  return String(stakeholder||'').replace(/Patient/g,patientLabel).replace(/\s*&\s*/g,', ')
+}
 
 /* JIGSAW PATH */
 
@@ -422,11 +425,11 @@ function getSemanticLayoutItems(wheels,layout){
 }
 
 /* SHARED COMPONENTS */
-function HoverInfoCard({wheel}){
+function HoverInfoCard({wheel, viewerRole}){
   return(
     <div style={{background:'white',borderRadius:'14px',padding:'18px',borderLeft:`5px solid ${wheel?.color??'transparent'}`,boxShadow:wheel?'0 8px 24px rgba(180,160,220,0.20)':'none',opacity:wheel?1:0,transition:'opacity 0.2s ease',pointerEvents:'none',overflow:'hidden'}}>
       {wheel&&<>
-        <div style={{fontSize:'10px',textTransform:'uppercase',color:P.textMid,marginBottom:'4px',fontWeight:'700',letterSpacing:'0.5px'}}>{wheel.stakeholder}</div>
+        <div style={{fontSize:'10px',textTransform:'uppercase',color:P.textMid,marginBottom:'4px',fontWeight:'700',letterSpacing:'0.5px'}}>{formatStakeholderLabel(wheel.stakeholder, viewerRole)}</div>
         <div style={{fontSize:'15px',fontWeight:'700',color:P.textMain,marginBottom:'8px',lineHeight:'1.3'}}>{wheel.label}</div>
         <div style={{fontSize:'12.5px',lineHeight:'1.6',color:'#4a4460'}}>{wheel.description}</div>
       </>}
@@ -451,12 +454,12 @@ function StakeholderFilterMenu({selectedFilters,onToggleFilter}){
   )
 }
 
-function RightPanel({selectedFilters,onToggleFilter,hoveredWheel}){
+function RightPanel({selectedFilters,onToggleFilter,hoveredWheel,viewerRole}){
   return(
     <div style={{width:'310px',flexShrink:0,display:'flex',flexDirection:'column'}}>
       <StakeholderFilterMenu selectedFilters={selectedFilters} onToggleFilter={onToggleFilter}/>
       <div style={{marginTop:'30px',minHeight:'340px',flexShrink:0}}>
-        <HoverInfoCard wheel={hoveredWheel}/>
+        <HoverInfoCard wheel={hoveredWheel} viewerRole={viewerRole}/>
       </div>
     </div>
   )
@@ -464,7 +467,7 @@ function RightPanel({selectedFilters,onToggleFilter,hoveredWheel}){
 
 /* APP */
 
-export default function App({ embedded = false, youthValues, caregiverValues }){
+export default function App({ embedded = false, youthValues, caregiverValues, viewerRole = 'youth' }){
   const [sidebarOpen,setSidebarOpen]=usePersistedState(LS.sidebarOpen,true)
   const [goal,setGoal]=usePersistedState(LS.goal,SHARED_GOAL)
   const [selectedFilters,setSelectedFilters]=usePersistedState(LS.selectedFilters,[])
@@ -532,10 +535,10 @@ export default function App({ embedded = false, youthValues, caregiverValues }){
         puzzleFillSrc={puzzleFillSrc} activeFillId={activeFillId} activeFillType={activeFillType}
         onClearFill={()=>{setActiveFillId(null);setActiveFillType(null)}}
         goalOpacity={goalOpacity} onGoalOpacityChange={setGoalOpacity}
-        onOpenModal={setModal} onReset={handleReset}
+        onOpenModal={setModal} onReset={handleReset} viewerRole={viewerRole}
       />
       <main style={{marginLeft:sidebarOpen?'268px':'62px',transition:'margin-left 0.3s',minHeight:embedded?'720px':'100vh'}}>
-        <RectangularPuzzleView wheels={wheels} goal={goal} onEditGoal={()=>setEditingGoal(true)} hovered={hovered} setHovered={setHovered} hoveredWheel={hoveredWheel} selectedFilters={selectedFilters} onToggleFilter={toggleFilter} puzzleFillSrc={puzzleFillSrc} outlineColorMode={outlineColorMode} textScale={textScale} pieceScale={pieceScale} resetKey={resetKey} goalOpacity={goalOpacity}/>
+        <RectangularPuzzleView wheels={wheels} goal={goal} onEditGoal={()=>setEditingGoal(true)} hovered={hovered} setHovered={setHovered} hoveredWheel={hoveredWheel} selectedFilters={selectedFilters} onToggleFilter={toggleFilter} puzzleFillSrc={puzzleFillSrc} outlineColorMode={outlineColorMode} textScale={textScale} pieceScale={pieceScale} resetKey={resetKey} goalOpacity={goalOpacity} viewerRole={viewerRole}/>
       </main>
 
       {/* Modals */}
@@ -550,7 +553,7 @@ export default function App({ embedded = false, youthValues, caregiverValues }){
 
 /* SIDEBAR */
 
-function Sidebar({embedded,open,onToggle,outlineColorMode,onOutlineColorModeChange,textScale,onTextScaleChange,pieceScale,onPieceScaleChange,puzzleFillSrc,activeFillId,activeFillType,onClearFill,goalOpacity,onGoalOpacityChange,onOpenModal,onReset}){
+function Sidebar({embedded,open,onToggle,outlineColorMode,onOutlineColorModeChange,textScale,onTextScaleChange,pieceScale,onPieceScaleChange,puzzleFillSrc,activeFillId,activeFillType,onClearFill,goalOpacity,onGoalOpacityChange,onOpenModal,onReset,viewerRole}){
   const [mediaPanelOpen,setMediaPanelOpen]=useState(false)
   const H={fontSize:'13px',fontWeight:'700',textTransform:'uppercase',color:P.accent,marginBottom:'10px',letterSpacing:'0.6px'}
   const SBtn=({onClick,children,color='white',textColor=P.textMain})=>(
@@ -621,7 +624,7 @@ function Sidebar({embedded,open,onToggle,outlineColorMode,onOutlineColorModeChan
               </button>
               {outlineColorMode&&(
                 <div style={{marginTop:'9px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px'}}>
-                  {[['Me (Patient)',STKHOLDER_OUTLINE.patient],['Caregiver',STKHOLDER_OUTLINE.caregiver],['Clinician',STKHOLDER_OUTLINE.clinician],['Everyone',STKHOLDER_OUTLINE.everyone],['Mixed',STKHOLDER_OUTLINE.mixed]].map(([l,c])=>(
+                  {[[viewerRole==='caregiver'?'Youth':'Me (Patient)',STKHOLDER_OUTLINE.patient],['Caregiver',STKHOLDER_OUTLINE.caregiver],['Clinician',STKHOLDER_OUTLINE.clinician],['Everyone',STKHOLDER_OUTLINE.everyone],['Mixed',STKHOLDER_OUTLINE.mixed]].map(([l,c])=>(
                     <div key={l} style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'11.5px',color:P.textMain,padding:'2px 0'}}>
                       <div style={{width:'12px',height:'12px',borderRadius:'3px',background:c,flexShrink:0}}/>
                       {l}
@@ -1005,7 +1008,7 @@ function PhotoUploaderModal({onClose,onSave,onSaveAndSetFill}){
 
 /* RECTANGULAR PUZZLE VIEW  (mosaic fill via clipPath) */
 
-function RectangularPuzzleView({wheels,goal,onEditGoal,hovered,setHovered,hoveredWheel,selectedFilters,onToggleFilter,puzzleFillSrc,outlineColorMode,textScale,pieceScale,resetKey,goalOpacity}){
+function RectangularPuzzleView({wheels,goal,onEditGoal,hovered,setHovered,hoveredWheel,selectedFilters,onToggleFilter,puzzleFillSrc,outlineColorMode,textScale,pieceScale,resetKey,goalOpacity,viewerRole}){
   const PS=Math.max(85,Math.min(200,Math.round(150*pieceScale)))
   const displayWheels=useMemo(()=>mergeDuplicateValueWheels(wheels),[wheels])
   const layout=useMemo(()=>getPuzzleLayout(displayWheels.length),[displayWheels.length])
@@ -1078,7 +1081,7 @@ function RectangularPuzzleView({wheels,goal,onEditGoal,hovered,setHovered,hovere
                   <text x={PS/2} y={PS/2-18*ts} textAnchor="middle" dominantBaseline="middle" fontSize={11*ts} fontWeight="700" fill={P.textMain} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF,opacity:isHover&&!isDrag?0:1}}>{lw.slice(0,lh).join(' ')}</text>
                   {lw.length>lh&&<text x={PS/2} y={PS/2-4*ts} textAnchor="middle" dominantBaseline="middle" fontSize={11*ts} fontWeight="700" fill={P.textMain} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF,opacity:isHover&&!isDrag?0:1}}>{lw.slice(lh).join(' ')}</text>}
                   <text x={PS/2} y={PS/2+12*ts} textAnchor="middle" dominantBaseline="middle" fontSize={8.5*ts} fontWeight="600" fill={P.textMid} style={{pointerEvents:'none',userSelect:'none',filter:puzzleFillSrc?'none':tF,opacity:isHover&&!isDrag?0:1}}>
-                    {shortStakeholder(w.stakeholder).length>20?shortStakeholder(w.stakeholder).substring(0,18)+'…':shortStakeholder(w.stakeholder)}
+                    {(()=>{const label=formatStakeholderLabel(w.stakeholder,viewerRole);return label.length>20?label.substring(0,18)+'…':label})()}
                   </text>
                 </g>
               )
@@ -1133,7 +1136,7 @@ function RectangularPuzzleView({wheels,goal,onEditGoal,hovered,setHovered,hovere
           </>)})()}
         </div>
         <div style={{paddingTop:'48px',flexShrink:0}}>
-          <RightPanel selectedFilters={selectedFilters} onToggleFilter={onToggleFilter} hoveredWheel={hoveredWheel}/>
+          <RightPanel selectedFilters={selectedFilters} onToggleFilter={onToggleFilter} hoveredWheel={hoveredWheel} viewerRole={viewerRole}/>
         </div>
       </div>
     </div>
