@@ -18,6 +18,7 @@ const STAKEHOLDER_TABS = { youth: 2, caregiver: 3, clinician: 4 }
 const DELETED_IDS_KEY = 'kidscolab.deletedValueIds.v1'
 
 function normalizeStakeholderValues(values = [], idPrefix = "phase2-value") {
+  if (!Array.isArray(values)) return null
   return values
     .map((value, index) => {
       const label = String(value.label || value.text || '').trim()

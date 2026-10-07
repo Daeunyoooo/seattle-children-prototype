@@ -28,7 +28,7 @@ export default function StakeholderValuesPanel({
   const { label, color, light, mid } = CONFIG[stakeholder]
   const defaultData = STAKEHOLDER_DATA[stakeholder]
   const vals =
-    stakeholder === 'youth'
+    stakeholder === 'youth' && Array.isArray(youthValues)
       ? youthValues
       : stakeholder === 'caregiver' && caregiverValues.length > 0
         ? caregiverValues

@@ -19,6 +19,7 @@ import {
 } from "./assets/image-library/version-b/library.js";
 import ToolAVennDiagram from "../Phase2_ToolA_venndiagram/src/App.jsx";
 import ToolBPuzzle from "../Phase2_ToolB_Puzzle/src/App.jsx";
+import predefinedYouthData from "../Phase2_ToolA_venndiagram/src/data/youth.json";
 
 const VOICE_ERROR_MESSAGES = {
   permission_denied: "Microphone access was denied.",
@@ -166,6 +167,10 @@ const COLORS = [
 ];
 const STICKER_OPTIONS = ["❤️", "⭐", "🌱", "🎓", "😊", "💪", "🎯", "🌈", "✨", "🦋"];
 const INLINE_STICKER_COUNT = 4;
+const PREDEFINED_YOUTH_COMPONENTS = predefinedYouthData.values.map((value) => ({
+  label: value.description ? `${value.label} — ${value.description}` : value.label,
+  icon: value.emoji || "⭐"
+}));
 const STAKEHOLDER_COMPONENT_SETS = [
   {
     role: "caregiver",
@@ -1846,6 +1851,8 @@ export default function App() {
 
   const phase2YouthValueItems = useMemo(() => {
     if (participantRole === "caregiver") {
+      // null keeps predefined Youth defaults in Part 2 until a Youth JSON is linked.
+      if (linkedYouthValues.length === 0) return null;
       return mapTextsToPhase2ValueItems(linkedYouthValues, "phase2-youth", (text) => getPhase2ValueIcon(text));
     }
     return mapTextsToPhase2ValueItems(phase2SelectedValues, "phase2-youth", (text) => getPhase2ValueIcon(text));
@@ -4370,7 +4377,8 @@ export default function App() {
     });
     let stakeholderComponents;
     if (participantRole === "caregiver") {
-      const youthComponents = linkedYouthValues.map((valueName, index) => {
+      const youthComponents = linkedYouthValues.length > 0
+        ? linkedYouthValues.map((valueName, index) => {
         const linkedDrawing =
           linkedYouthDrawings.find(
             (drawing) => cleanValueText(drawing.valueName).toLowerCase() === cleanValueText(valueName).toLowerCase()
@@ -4401,7 +4409,19 @@ export default function App() {
           w: png.w,
           h: png.h
         };
-      });
+      })
+        : PREDEFINED_YOUTH_COMPONENTS.map((component, index) => {
+            const png = makeMockComponentPNG(component, "#F59E0B", index);
+            return {
+              id: `youth-predefined-${index}`,
+              owner: "youth",
+              ownerLabel: "Youth values",
+              label: component.label,
+              src: png.dataURL,
+              w: png.w,
+              h: png.h
+            };
+          });
       const nonCaregiverSets = STAKEHOLDER_COMPONENT_SETS.filter((set) => set.role !== "caregiver");
       stakeholderComponents = [
         ...youthComponents,
@@ -5282,8 +5302,9 @@ export default function App() {
           <section className="researcher-card researcher-workflow-card">
             <h2>Caregiver only — Link Youth values for Part 2</h2>
             <p className="researcher-subtitle">
-              Upload the Youth Part 1 log (after Youth finishes Part 1) so Caregiver Part 2 shows Youth values.
-              Part 2 log is only needed if you also want Youth Tool C drawings.
+              Upload the Youth Part 1 log (after Youth finishes Part 1) so Caregiver Part 2 shows that Youth&apos;s
+              values. Part 2 log is only needed if you also want Youth Tool C drawings. If you skip this, Caregiver
+              keeps predefined Youth defaults.
             </p>
             <div className="researcher-workflow-step">
               <div className="researcher-step-label">Upload Youth session JSON</div>
@@ -5339,7 +5360,9 @@ export default function App() {
                   ))}
                 </div>
               ) : (
-                <p className="researcher-draft-summary">No Youth values linked yet for this caregiver ID.</p>
+                <p className="researcher-draft-summary">
+                  No Youth values linked yet for this caregiver ID. Part 2 will use predefined Youth defaults.
+                </p>
               )}
             </div>
           </section>
@@ -5751,8 +5774,8 @@ export default function App() {
               </label>
               {participantRole === "caregiver" ? (
                 <p className="participant-id-subtitle">
-                  After you start, the researcher opens Caregiver mode and uploads the Youth session JSON so Youth
-                  values appear in Part 2.
+                  Part 2 starts with predefined Youth values. After Youth finishes Part 1, the researcher can upload
+                  the Youth session JSON to replace those with that Youth&apos;s values.
                 </p>
               ) : null}
               {participantPasswordError ? (
@@ -6542,9 +6565,9 @@ export default function App() {
         {phaseTwoScreen === "tools" ? (
           <div className="screen active">
             {caregiverMissingYouthLink ? (
-              <p className="participant-id-error" role="status">
-                Youth values are not linked yet. Ask the researcher to upload the Youth session JSON on the
-                researcher dashboard (caregiver ID: {participantSessionId}).
+              <p className="section-sub" role="status">
+                Youth values are not linked yet, so Part 2 is showing the predefined Youth values. Upload the Youth
+                session JSON on the researcher dashboard to replace them (caregiver ID: {participantSessionId}).
               </p>
             ) : participantRole === "caregiver" && linkedYouthValues.length > 0 ? (
               <p className="section-sub">

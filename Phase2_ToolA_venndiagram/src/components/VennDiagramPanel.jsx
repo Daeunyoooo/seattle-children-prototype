@@ -125,17 +125,18 @@ function isPredefinedCaregiverValueId(id) {
 }
 
 function makeDotsForOverrides(youthValues = [], caregiverValues = []) {
+  const hasYouthOverride = Array.isArray(youthValues)
   const hasCaregiverOverride = caregiverValues.length > 0
   const nonOverriddenDots = INITIAL_DOTS.filter(dot => {
     const ids = dot.valueIds || [dot.id]
-    if (dot.region === 'youth' || ids.some(isYouthValueId)) return false
+    if (hasYouthOverride && (dot.region === 'youth' || ids.some(isYouthValueId))) return false
     if (hasCaregiverOverride && (dot.region === 'caregiver' || ids.some(isPredefinedCaregiverValueId))) {
       return false
     }
     return true
   })
   return [
-    ...makeYouthDots(youthValues),
+    ...(hasYouthOverride && youthValues.length > 0 ? makeYouthDots(youthValues) : []),
     ...(hasCaregiverOverride ? makeCaregiverDots(caregiverValues) : []),
     ...nonOverriddenDots,
   ]
@@ -144,13 +145,15 @@ function makeDotsForOverrides(youthValues = [], caregiverValues = []) {
 function makeValueInfoForOverrides(youthValues = [], caregiverValues = []) {
   const info = { ...VALUE_INFO }
   Object.keys(info).forEach(id => {
-    if (isYouthValueId(id)) delete info[id]
+    if (Array.isArray(youthValues) && isYouthValueId(id)) delete info[id]
     if (caregiverValues.length > 0 && isPredefinedCaregiverValueId(id)) delete info[id]
   })
-  youthValues.forEach((value, index) => {
-    const id = value.id || `phase2-youth-${index}`
-    info[id] = { stakeholder: 'youth', label: value.label }
-  })
+  if (Array.isArray(youthValues)) {
+    youthValues.forEach((value, index) => {
+      const id = value.id || `phase2-youth-${index}`
+      info[id] = { stakeholder: 'youth', label: value.label }
+    })
+  }
   caregiverValues.forEach((value, index) => {
     const id = value.id || `phase2-caregiver-${index}`
     info[id] = { stakeholder: 'caregiver', label: value.label }
@@ -274,13 +277,13 @@ export default function VennDiagramPanel({
 
   // Persist dots to localStorage whenever they change
   useEffect(() => {
-    if (youthValues.length > 0 || caregiverValues.length > 0) return
+    if ((youthValues?.length || 0) > 0 || caregiverValues.length > 0) return
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(dots))
     } catch {
       // ignore quota / privacy mode errors — in-memory state still works
     }
-  }, [dots, youthValues.length, caregiverValues.length])
+  }, [dots, youthValues?.length, caregiverValues.length])
 
   function getSvgCoords(e) {
     const svg  = svgRef.current

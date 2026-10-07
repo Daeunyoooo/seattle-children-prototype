@@ -152,6 +152,8 @@ const TOOL_C_STAKEHOLDER_WHEELS = [
 ]
 
 function normalizeYouthValues(youthValues){
+  // null means "no Youth JSON yet" — keep predefined Patient wheels.
+  // An array, even empty, is an explicit Youth selection and replaces those defaults.
   if (!Array.isArray(youthValues)) return null
   return youthValues
     .map((value,index)=>{
@@ -253,14 +255,19 @@ function buildWheelLabels(youthValues, caregiverValues){
   ]
   const selectedYouthValues=normalizeYouthValues(youthValues)
   const selectedCaregiverValues=normalizeCaregiverValues(caregiverValues)
-  if (!selectedYouthValues && !selectedCaregiverValues) return mergeDuplicateValueWheels(defaults)
+  const usePredefinedYouth=selectedYouthValues==null
+  if (usePredefinedYouth && !selectedCaregiverValues) return mergeDuplicateValueWheels(defaults)
 
   let stakeholderWheels = TOOL_C_STAKEHOLDER_WHEELS
   if (selectedCaregiverValues) {
     stakeholderWheels = TOOL_C_STAKEHOLDER_WHEELS.filter((wheel) => wheel.stakeholder !== 'Caregiver')
   }
+  const predefinedYouthWheels=usePredefinedYouth
+    ? defaults.filter((wheel)=>String(wheel.stakeholder).toLowerCase().includes('patient'))
+    : []
   return mergeDuplicateValueWheels([
     ...(selectedYouthValues || []),
+    ...predefinedYouthWheels,
     ...(selectedCaregiverValues || []),
     ...stakeholderWheels,
   ])
