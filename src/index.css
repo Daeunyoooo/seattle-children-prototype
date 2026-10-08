@@ -324,8 +324,23 @@ button:disabled {
   pointer-events: none;
 }
 
+.phase2-tool-under-tab {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .phase2-tool-step-indicator {
+  flex-wrap: nowrap;
   justify-content: center;
+}
+
+.phase2-tool-step-indicator .phase1-step {
+  white-space: nowrap;
+}
+
+@media (max-width: 380px) {
+  .phase2-tool-step-indicator {
+    flex-wrap: wrap;
+  }
 }
 
 .phase1-version-buttons {
@@ -3383,6 +3398,12 @@ canvas.draw-cv {
 
 .participant-sync-status {
   color: #5f6368;
+}
+
+.switch-user-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 12px;
 }
 
 .researcher-api-warning {

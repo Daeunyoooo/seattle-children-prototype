@@ -1746,6 +1746,30 @@ export default function App() {
   function dismissMicTutorial(version) {
     setMicTutorialDismissed((current) => ({ ...current, [version]: true }));
   }
+
+  async function switchParticipantUser() {
+    const confirmed = window.confirm(
+      `Switch user? Your progress is saved under ID ${participantSessionId}. You will return to the login page.`
+    );
+    if (!confirmed) return;
+
+    stopSpeechRecognition();
+    try {
+      persistParticipantDraft();
+      const draft = await buildParticipantSessionExportAsync();
+      const synced = mergePreservedLinkedFields(
+        { ...draft, sessionStatus: "in_progress", updatedAt: new Date().toISOString() },
+        readParticipantSessionDraft(participantSessionId)
+      );
+      writeParticipantSessionDraft(synced);
+      await saveParticipantSessionRemote(synced);
+    } catch {
+      // Draft is already persisted locally; continue switching users.
+    }
+
+    window.localStorage.removeItem(PARTICIPANT_SESSION_STORAGE_KEY);
+    window.location.reload();
+  }
   const phaseOneGoalText = useMemo(() => {
     const useCombinedGoals = phaseOneScreen === "summary" || phase === 2;
     if (useCombinedGoals) {
@@ -2784,6 +2808,7 @@ export default function App() {
       setVersionBQuestionIndex((current) => current + 1);
       return;
     }
+    if (!String(versionBAnswers[versionBQuestionIndex] || "").trim()) return;
     completeVersionBQuestions();
   }
 
@@ -4953,8 +4978,8 @@ export default function App() {
     const youthLabel = linked.linkedYouthParticipantId || "Youth";
     const drawingNote =
       linked.linkedYouthDrawings.length > 0
-        ? ` including ${linked.linkedYouthDrawings.length} Tool C drawing${linked.linkedYouthDrawings.length === 1 ? "" : "s"}`
-        : " (no Tool C drawings found — upload Youth Part 2 JSON for images)";
+        ? ` including ${linked.linkedYouthDrawings.length} Visualization C drawing${linked.linkedYouthDrawings.length === 1 ? "" : "s"}`
+        : " (no Visualization C drawings found — upload Youth Part 2 JSON for images)";
     setPeerLinkFeedback(
       "success",
       `Linked ${linked.linkedYouthValues.length} Youth value${linked.linkedYouthValues.length === 1 ? "" : "s"} from ${youthLabel} to caregiver ${targetSessionId}${drawingNote}.`
@@ -5072,10 +5097,10 @@ export default function App() {
     const caregiverLabel = linked.linkedCaregiverParticipantId || "Caregiver";
     const drawingNote =
       linked.linkedCaregiverDrawings.length > 0
-        ? ` including ${linked.linkedCaregiverDrawings.length} Tool C drawing${
+        ? ` including ${linked.linkedCaregiverDrawings.length} Visualization C drawing${
             linked.linkedCaregiverDrawings.length === 1 ? "" : "s"
           }`
-        : " (no Tool C drawings found — upload Caregiver Part 2 JSON for images)";
+        : " (no Visualization C drawings found — upload Caregiver Part 2 JSON for images)";
     setPeerLinkFeedback(
       "success",
       `Linked ${linked.linkedCaregiverValues.length} Caregiver value${
@@ -5303,7 +5328,7 @@ export default function App() {
             <h2>Caregiver only — Link Youth values for Part 2</h2>
             <p className="researcher-subtitle">
               Upload the Youth Part 1 log (after Youth finishes Part 1) so Caregiver Part 2 shows that Youth&apos;s
-              values. Part 2 log is only needed if you also want Youth Tool C drawings. If you skip this, Caregiver
+              values. Part 2 log is only needed if you also want Youth Visualization C drawings. If you skip this, Caregiver
               keeps predefined Youth defaults.
             </p>
             <div className="researcher-workflow-step">
@@ -5349,7 +5374,7 @@ export default function App() {
                     {displayLinkedYouthSyncedAt
                       ? ` · ${new Date(displayLinkedYouthSyncedAt).toLocaleString()}`
                       : ""}
-                    {` · ${displayLinkedYouthDrawings.length} Tool C drawing${
+                    {` · ${displayLinkedYouthDrawings.length} Visualization C drawing${
                       displayLinkedYouthDrawings.length === 1 ? "" : "s"
                     }`}
                   </p>
@@ -5371,7 +5396,7 @@ export default function App() {
             <h2>Youth only — Link Caregiver values for Part 2</h2>
             <p className="researcher-subtitle">
               Optional. Upload the Caregiver Part 1 log (after Caregiver finishes Part 1) so Youth Part 2 shows
-              that Caregiver&apos;s values. Part 2 log is only needed for Caregiver Tool C drawings. If you skip this,
+              that Caregiver&apos;s values. Part 2 log is only needed for Caregiver Visualization C drawings. If you skip this,
               Youth keeps predefined Caregiver defaults.
             </p>
             <div className="researcher-workflow-step">
@@ -5417,7 +5442,7 @@ export default function App() {
                     {displayLinkedCaregiverSyncedAt
                       ? ` · ${new Date(displayLinkedCaregiverSyncedAt).toLocaleString()}`
                       : ""}
-                    {` · ${displayLinkedCaregiverDrawings.length} Tool C drawing${
+                    {` · ${displayLinkedCaregiverDrawings.length} Visualization C drawing${
                       displayLinkedCaregiverDrawings.length === 1 ? "" : "s"
                     }`}
                   </p>
@@ -5524,7 +5549,7 @@ export default function App() {
         <section className="researcher-card researcher-workflow-card">
           <h2>Session log data ({researcherWorkingWithCaregiver ? "Caregiver" : "Youth"})</h2>
           <p className="researcher-subtitle">
-            Download participant log JSON directly to this computer. Nothing is uploaded to GitHub Pages. Tool C PNG
+            Download participant log JSON directly to this computer. Nothing is uploaded to GitHub Pages. Visualization C PNG
             data is embedded in the Part 2 JSON.
           </p>
 
@@ -5600,7 +5625,7 @@ export default function App() {
                 <div className="log-data-info">
                   <div className="log-data-title">Part 2 log data</div>
                   <p className="log-data-desc">
-                    Full session JSON. Tool C images use Storage PNG URLs when Supabase is configured.
+                    Full session JSON. Visualization C images use Storage PNG URLs when Supabase is configured.
                   </p>
                   {phase2SavedAt ? (
                     <span className="log-data-saved">Downloaded {new Date(phase2SavedAt).toLocaleString()}</span>
@@ -5624,7 +5649,7 @@ export default function App() {
               loadedDraft.phaseTwo?.toolC?.composite?.finalImage ||
               loadedDraft.phaseTwo?.toolC?.stakeholders?.finalImage ? (
                 <div className="log-data-images">
-                  <div className="log-data-title">Tool C images (PNG)</div>
+                  <div className="log-data-title">Visualization C images (PNG)</div>
                   <p className="log-data-desc">
                     Previewed from the loaded session (Storage URL or embedded PNG data).
                   </p>
@@ -5816,6 +5841,9 @@ export default function App() {
           ) : null}
         </span>
         {participantSyncStatus ? <span className="participant-sync-status">{participantSyncStatus}</span> : null}
+        <button className="switch-user-btn" type="button" onClick={switchParticipantUser}>
+          Switch user
+        </button>
       </div>
       <div className="phase-tabs">
         <div className="phase-tab-list" role="tablist" aria-label="Workflow part">
@@ -5898,7 +5926,7 @@ export default function App() {
                     className={`phase1-step ${getPhaseTwoActiveTool() === tool ? "active" : ""}`}
                     onClick={() => switchPhaseTwoTool(tool)}
                   >
-                    Tool {tool}
+                    Visualization {tool}
                   </button>
                 </span>
               ))}
@@ -6150,7 +6178,21 @@ export default function App() {
                   >
                     ← Back
                   </button>
-                  <button className="primary" type="button" onClick={nextVersionBQuestion}>
+                  <button
+                    className="primary"
+                    type="button"
+                    onClick={nextVersionBQuestion}
+                    disabled={
+                      versionBQuestionIndex === VERSION_B_QUESTIONS.length - 1 &&
+                      !String(versionBAnswers[versionBQuestionIndex] || "").trim()
+                    }
+                    title={
+                      versionBQuestionIndex === VERSION_B_QUESTIONS.length - 1 &&
+                      !String(versionBAnswers[versionBQuestionIndex] || "").trim()
+                        ? "Please answer this question first"
+                        : undefined
+                    }
+                  >
                     {versionBQuestionIndex === VERSION_B_QUESTIONS.length - 1 ? "Done — See my values ✓" : "Next →"}
                   </button>
                 </div>
@@ -6578,15 +6620,15 @@ export default function App() {
             ) : null}
             <div className="tool-entry-grid">
               <button className="tool-entry-card active-tool" type="button" onClick={startToolAVennDiagram}>
-                <span>Tool A</span>
+                <span>Visualization A</span>
                 Venn Diagram
               </button>
               <button className="tool-entry-card active-tool" type="button" onClick={startToolBPuzzle}>
-                <span>Tool B</span>
+                <span>Visualization B</span>
                 Puzzle
               </button>
               <button className="tool-entry-card active-tool" type="button" onClick={startArtAndDrawingTool}>
-                <span>Tool C</span>
+                <span>Visualization C</span>
                 Art and Drawing
               </button>
             </div>
