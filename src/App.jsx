@@ -9,9 +9,12 @@ import {
 } from "./lib/sessionStorage.js";
 import {
   PARTICIPANT_EXPORT_SCHEMA_V2,
+  buildPart1ValueLog,
   buildPhaseTwoExport,
+  legacyAiGeneratedValues,
   serializeFinalImage,
-  serializePhotoForExport
+  serializePhotoForExport,
+  toEditedValueEntries
 } from "./lib/sessionExport.js";
 import {
   VERSION_B_QUESTION_SEED_LIBRARY,
@@ -282,6 +285,64 @@ function extractValueLabel(value) {
 
 function collectValueLabels(list) {
   return (Array.isArray(list) ? list : []).map(extractValueLabel).filter(Boolean);
+}
+
+function sessionPart1ValueLog(session) {
+  if (session?.part1ValueLog?.aiGenerated && session?.part1ValueLog?.userEdited && Array.isArray(session?.part1ValueLog?.selected)) {
+    return session.part1ValueLog;
+  }
+  return buildPart1ValueLog({
+    previousSession: session,
+    selectedValues: session?.phase2?.selectedValues || []
+  });
+}
+
+function Part1ValueLogList({ entries }) {
+  if (!entries?.length) return <p className="part1-value-log-empty">None yet</p>;
+  return (
+    <ul className="part1-value-log-list">
+      {entries.map((entry, index) => {
+        const text = typeof entry === "string" ? entry : entry?.text;
+        const icon = typeof entry === "string" ? "" : entry?.icon || "";
+        return (
+          <li key={`${text}-${index}`}>
+            {icon ? <span aria-hidden="true">{icon} </span> : null}
+            {text}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Part1ValueLogSummary({ session }) {
+  const valueLog = sessionPart1ValueLog(session);
+  return (
+    <div className="part1-value-log">
+      <div className="part1-value-log-card">
+        <div className="log-data-title">AI-generated values</div>
+        {["A", "B"].map((tool) => (
+          <div key={tool}>
+            <div className="part1-value-log-tool">Tool {tool}</div>
+            <Part1ValueLogList entries={valueLog.aiGenerated?.[tool]} />
+          </div>
+        ))}
+      </div>
+      <div className="part1-value-log-card">
+        <div className="log-data-title">Participant-edited values</div>
+        {["A", "B"].map((tool) => (
+          <div key={tool}>
+            <div className="part1-value-log-tool">Tool {tool}</div>
+            <Part1ValueLogList entries={valueLog.userEdited?.[tool]} />
+          </div>
+        ))}
+      </div>
+      <div className="part1-value-log-card">
+        <div className="log-data-title">Final selection</div>
+        <Part1ValueLogList entries={valueLog.selected} />
+      </div>
+    </div>
+  );
 }
 
 function extractLinkedPeerValuesFromSessionJson(payload, peerLabel) {
@@ -1448,10 +1509,16 @@ export default function App() {
   const valueResizeRef = useRef(null);
   const sessionEventsRef = useRef([]);
   const lastAppliedAiValuesAtRef = useRef({ A: null, B: null });
+  const userEditedToolsRef = useRef({ A: false, B: false });
   const valuesRef = useRef(values);
   const versionBBoardItemsRef = useRef(versionBBoardItems);
   valuesRef.current = values;
   versionBBoardItemsRef.current = versionBBoardItems;
+
+  function markUserEditedTool(tool) {
+    if (tool !== "A" && tool !== "B") return;
+    userEditedToolsRef.current = { ...userEditedToolsRef.current, [tool]: true };
+  }
 
   function appendSessionEvent(event) {
     sessionEventsRef.current = [
@@ -2714,17 +2781,24 @@ export default function App() {
   }
 
   function updateVersionBBoardItemText(itemId, text) {
+    markUserEditedTool("B");
+    const previous = versionBBoardItems.find((item) => item.id === itemId)?.text || "";
     commitToolBBoardItems(
       versionBBoardItems.map((item) => (item.id === itemId ? { ...item, text } : item))
     );
+    syncSelectedValueText(previous, text);
   }
 
   function removeVersionBBoardItem(itemId) {
+    markUserEditedTool("B");
+    const removed = versionBBoardItems.find((item) => item.id === itemId);
     commitToolBBoardItems(versionBBoardItems.filter((item) => item.id !== itemId));
+    if (removed?.type === "text") syncSelectedValueText(removed.text, "");
     setVersionBSelectedBoardItemId((current) => (current === itemId ? null : current));
   }
 
   function addVersionBBoardText() {
+    markUserEditedTool("B");
     const nextId = newVersionBCardId();
     const textCount = versionBBoardItems.filter((item) => item.type === "text").length;
     const position = {
@@ -2813,6 +2887,7 @@ export default function App() {
   }
 
   function moveValue(index, delta) {
+    markUserEditedTool("A");
     const target = index + delta;
     if (target < 0 || target >= values.length) return;
     const nextValues = [...values];
@@ -2832,26 +2907,45 @@ export default function App() {
   }
 
   function addValue() {
+    markUserEditedTool("A");
     const trimmed = newValue.trim();
     commitToolAValues([...values, trimmed], [...valueIcons, null]);
     setNewValue("");
   }
 
+  function syncSelectedValueText(previousText, nextText) {
+    const previous = cleanValueText(previousText);
+    const next = cleanValueText(nextText);
+    if (!previous || previous === next) return;
+    setPhase2SelectedValues((current) => {
+      if (!current.includes(previous)) return current;
+      if (!next) return current.filter((value) => value !== previous);
+      return current.map((value) => (value === previous ? next : value));
+    });
+  }
+
   function updateValue(index, value) {
+    markUserEditedTool("A");
+    const previous = values[index];
     commitToolAValues(
       values.map((item, itemIndex) => (itemIndex === index ? value : item)),
       valueIcons
     );
+    syncSelectedValueText(previous, value);
   }
 
   function removeValue(index) {
+    markUserEditedTool("A");
+    const removed = values[index];
     commitToolAValues(
       values.filter((_, itemIndex) => itemIndex !== index),
       valueIcons.filter((_, itemIndex) => itemIndex !== index)
     );
+    syncSelectedValueText(removed, "");
   }
 
   function setValueIcon(index, emoji) {
+    markUserEditedTool("A");
     const nextIcons = [...valueIcons];
     nextIcons[index] = emoji;
     setValueIcons(nextIcons);
@@ -2859,6 +2953,7 @@ export default function App() {
   }
 
   function setSummaryValueIcon(source, sourceIndex, emoji) {
+    if (source === "A" || source === "B") markUserEditedTool(source);
     if (source === "A") {
       setToolAValueIcons((current) => {
         const next = [...current];
@@ -2926,6 +3021,29 @@ export default function App() {
     return toolBValues;
   }
 
+  function currentToolAEditedEntries() {
+    if (phaseOneVersion === "A" && phaseOneScreen === "values") {
+      return toEditedValueEntries(values, valueIcons);
+    }
+    return toEditedValueEntries(toolAValues, toolAValueIcons);
+  }
+
+  function currentToolBEditedEntries() {
+    if (phaseOneVersion === "B" && phaseOneScreen === "values") {
+      const texts = [];
+      const icons = [];
+      versionBBoardItems.forEach((item) => {
+        if (item.type !== "text") return;
+        const clean = String(item.text || "").trim();
+        if (!clean) return;
+        icons.push(toolBValueIcons[texts.length] || null);
+        texts.push(clean);
+      });
+      return toEditedValueEntries(texts, icons);
+    }
+    return toEditedValueEntries(toolBValues, toolBValueIcons);
+  }
+
   function snapshotPerValueDrawings() {
     const snapshots = drawValues
       .map((valueName, index) => {
@@ -2986,8 +3104,23 @@ export default function App() {
   }
 
   function buildParticipantSessionExport() {
-    const exportedToolAValues = currentToolAValues();
-    const exportedToolBValues = currentToolBValues();
+    const existingDraft = readParticipantSessionDraft(participantSessionId) || {};
+    const editingTool = phaseOneScreen === "values" ? phaseOneVersion : null;
+    const part1ValueLog = buildPart1ValueLog({
+      previousSession: existingDraft,
+      aiFallbackByTool:
+        editingTool && aiSuggestedValues.length ? { [editingTool]: aiSuggestedValues } : null,
+      editedByTool: {
+        A: currentToolAEditedEntries(),
+        B: currentToolBEditedEntries()
+      },
+      authoritativeEditedTools: ["A", "B"].filter((tool) => userEditedToolsRef.current[tool]),
+      selectedValues: phase2SelectedValues
+    });
+    const exportedToolAValues = part1ValueLog.userEdited.A.map((entry) => entry.text);
+    const exportedToolBValues = part1ValueLog.userEdited.B.map((entry) => entry.text);
+    const exportedToolAIcons = part1ValueLog.userEdited.A.map((entry) => entry.icon);
+    const exportedToolBIcons = part1ValueLog.userEdited.B.map((entry) => entry.icon);
     return {
       schema: PARTICIPANT_EXPORT_SCHEMA,
       sessionId: participantSessionId,
@@ -3021,7 +3154,7 @@ export default function App() {
           answer: answers[index] || ""
         })),
         identifiedValues: exportedToolAValues,
-        valueIcons: toolAValueIcons,
+        valueIcons: exportedToolAIcons,
         goal: toolAValues.length > 0 ? toolAGoalData : goalData
       },
       toolB: {
@@ -3049,24 +3182,18 @@ export default function App() {
               }
         ),
         identifiedValues: exportedToolBValues,
-        valueIcons: toolBValueIcons,
+        valueIcons: exportedToolBIcons,
         goals: {
           shortTerm: versionBGoalShort,
           longTerm: versionBGoalLong
         }
       },
-      aiGeneratedValues: aiSuggestedValues,
-      aiGeneratedValuesByTool: {
-        ...(readParticipantSessionDraft(participantSessionId)?.aiGeneratedValuesByTool || {}),
-        // Only stamp suggestions onto the tool currently showing its values screen.
-        ...(aiSuggestedValues.length && phaseOneScreen === "values"
-          ? { [phaseOneVersion]: aiSuggestedValues }
-          : {})
-      },
-      aiValuesUpdatedAtByTool:
-        readParticipantSessionDraft(participantSessionId)?.aiValuesUpdatedAtByTool || {},
+      aiGeneratedValues: legacyAiGeneratedValues(existingDraft, part1ValueLog, phaseOneVersion),
+      aiGeneratedValuesByTool: part1ValueLog.aiGenerated,
+      aiValuesUpdatedAtByTool: existingDraft.aiValuesUpdatedAtByTool || {},
+      part1ValueLog,
       phase2: {
-        selectedValues: phase2SelectedValues,
+        selectedValues: part1ValueLog.selected,
         selectedGoalSources: phase2SelectedGoalSources
       },
       phaseTwo: buildPhaseTwoExport({
@@ -3269,9 +3396,12 @@ export default function App() {
         setResearcherStatus(`${cleanSessionId} has not finished Part 1 yet.`);
         return;
       }
+      const part1ValueLog = sessionPart1ValueLog(session);
       const downloadedAt = new Date().toISOString();
       const downloadSession = {
         ...session,
+        part1ValueLog,
+        aiGeneratedValuesByTool: part1ValueLog.aiGenerated,
         sessionStatus: "phase1_saved",
         checkpoints: {
           ...(session.checkpoints || {}),
@@ -3591,10 +3721,15 @@ export default function App() {
       }
     }
     const baseSession = readParticipantSessionDraft(targetSessionId) || buildParticipantSessionExport();
-    const aiGeneratedValuesByTool = {
-      ...(baseSession.aiGeneratedValuesByTool || {}),
-      [targetTool]: normalized.values
-    };
+    const importedEditedEntries = toEditedValueEntries(importedTexts, importedIcons);
+    const part1ValueLog = buildPart1ValueLog({
+      previousSession: baseSession,
+      aiReplacementByTool: { [targetTool]: normalized.values },
+      editedByTool: { [targetTool]: importedEditedEntries },
+      authoritativeEditedTools: [targetTool],
+      selectedValues: baseSession.phase2?.selectedValues || phase2SelectedValues
+    });
+    const aiGeneratedValuesByTool = part1ValueLog.aiGenerated;
     const aiValuesUpdatedAtByTool = {
       ...(baseSession.aiValuesUpdatedAtByTool || {}),
       [targetTool]: importedAt
@@ -3617,26 +3752,21 @@ export default function App() {
       aiGeneratedValues: normalized.values,
       aiGeneratedValuesByTool,
       aiValuesUpdatedAtByTool,
-      toolA:
-        targetTool === "A"
-          ? {
-              ...baseSession.toolA,
-              identifiedValues: importedTexts,
-              valueIcons: importedIcons
-            }
-          : baseSession.toolA,
-      toolB:
-        targetTool === "B"
-          ? {
-              ...baseSession.toolB,
-              identifiedValues: importedTexts,
-              valueIcons: importedIcons
-              // Do not overwrite boardItems here — participant applies texts on the values screen.
-            }
-          : baseSession.toolB,
+      part1ValueLog,
+      toolA: {
+        ...baseSession.toolA,
+        identifiedValues: part1ValueLog.userEdited.A.map((entry) => entry.text),
+        valueIcons: part1ValueLog.userEdited.A.map((entry) => entry.icon)
+      },
+      toolB: {
+        ...baseSession.toolB,
+        identifiedValues: part1ValueLog.userEdited.B.map((entry) => entry.text),
+        valueIcons: part1ValueLog.userEdited.B.map((entry) => entry.icon)
+        // Do not overwrite boardItems here — participant applies texts on the values screen.
+      },
       phase2: {
         ...(baseSession.phase2 || {}),
-        selectedValues: baseSession.phase2?.selectedValues || [],
+        selectedValues: part1ValueLog.selected,
         selectedGoalSources: baseSession.phase2?.selectedGoalSources || phase2SelectedGoalSources
       },
       events: sessionEventsRef.current,
@@ -5560,7 +5690,10 @@ export default function App() {
               <div className="log-data-row">
                 <div className="log-data-info">
                   <div className="log-data-title">Part 1 log data</div>
-                  <p className="log-data-desc">Questions, values, goals, and AI updates through Part 1.</p>
+                  <p className="log-data-desc">
+                    Questions, goals, and three separate value records: AI-generated, participant-edited, and the final
+                    Part 2 selection.
+                  </p>
                   {phase1SavedAt ? (
                     <span className="log-data-saved">Downloaded {new Date(phase1SavedAt).toLocaleString()}</span>
                   ) : (
@@ -5578,6 +5711,8 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              <Part1ValueLogSummary session={loadedDraft} />
 
               {(loadedDraft.toolB?.questions || []).some((question) => getPhase1ToolBPhotoSrc(question?.photo)) ||
               (loadedDraft.toolB?.boardItems || []).some(
